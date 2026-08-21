@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -70,6 +71,15 @@ type LogStreamEvent struct {
 	State string `json:"state"`
 }
 
+// stream - один открытый поток. Отдельная сущность нужна из-за гонки при
+// перезапуске: старый поток заканчивается уже ПОСЛЕ того, как новый занял тот
+// же ключ, и его уборка отменяла чужой, только что открытый поток. Экран на
+// это отвечал бесконечным кругом «оборвался - открыли заново».
+type stream struct {
+	cancel context.CancelFunc
+	ring   *ring
+}
+
 type LogsService struct {
 	app   *application.App
 	conns *ConnRegistry
@@ -77,8 +87,7 @@ type LogsService struct {
 	// Ключ составной: serverID + projectID. По одному projectID открытые логи
 	// `nginx` на сервере A убивали бы стрим `nginx` на сервере B, а Buffered
 	// возвращал бы перемешанные строки двух машин.
-	cancels map[string]context.CancelFunc
-	rings   map[string]*ring
+	streams map[string]*stream
 }
 
 func logKey(serverID, projectID string) string { return serverID + "\x00" + projectID }
@@ -86,25 +95,34 @@ func logKey(serverID, projectID string) string { return serverID + "\x00" + proj
 func NewLogsService(app *application.App, conns *ConnRegistry) *LogsService {
 	return &LogsService{
 		app: app, conns: conns,
-		cancels: map[string]context.CancelFunc{},
-		rings:   map[string]*ring{},
+		streams: map[string]*stream{},
 	}
 }
 
 // Start открывает стрим логов проекта. Повторный вызов для того же проекта
 // сначала закрывает предыдущий стрим: иначе `docker logs -f` копится на сервере
 // при каждом заходе на экран.
-func (s *LogsService) Start(serverID, projectID string, kind collect.ProjectKind) error {
+// Start открывает поток. tail - сколько строк истории показать: при первом
+// открытии экрана нужна пара сотен для контекста, а при ВОЗОБНОВЛЕНИИ после
+// обрыва ноль. Иначе каждое возобновление вываливает ту же историю заново, и
+// лог растёт копиями самого себя.
+func (s *LogsService) Start(serverID, projectID string,
+	kind collect.ProjectKind, tail int) error {
+
 	s.Stop(serverID, projectID)
 
 	conn, err := s.conns.Get(serverID)
 	if err != nil {
 		return err
 	}
+	if tail < 0 {
+		tail = 0
+	}
 
-	cmd := "docker logs -f --tail 200 " + shellQuote(projectID)
+	n := strconv.Itoa(tail)
+	cmd := "docker logs -f --tail " + n + " " + shellQuote(projectID)
 	if kind == collect.KindSystemd {
-		cmd = "journalctl -u " + shellQuote(projectID) + " -f -n 200 --no-pager"
+		cmd = "journalctl -u " + shellQuote(projectID) + " -f -n " + n + " --no-pager"
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -114,18 +132,17 @@ func (s *LogsService) Start(serverID, projectID string, kind collect.ProjectKind
 		return err
 	}
 
-	rb := newRing(logRingSize)
+	st := &stream{cancel: cancel, ring: newRing(logRingSize)}
 	key := logKey(serverID, projectID)
 	s.mu.Lock()
-	s.cancels[key] = cancel
-	s.rings[key] = rb
+	s.streams[key] = st
 	s.mu.Unlock()
 
 	s.app.Event.Emit("logs:stream", LogStreamEvent{
 		ServerID: serverID, ProjectID: projectID, State: "started",
 	})
 
-	go s.pump(ctx, rc, rb, key, serverID, projectID)
+	go s.pump(ctx, rc, st, key, serverID, projectID)
 	return nil
 }
 
@@ -134,7 +151,7 @@ func (s *LogsService) Start(serverID, projectID string, kind collect.ProjectKind
 // (контейнер остановили) - то есть каждый заход на экран логов оставлял на
 // сервере по одному живому `docker logs -f`.
 func (s *LogsService) pump(ctx context.Context, rc io.ReadCloser,
-	rb *ring, key, serverID, projectID string) {
+	st *stream, key, serverID, projectID string) {
 
 	defer rc.Close()
 
@@ -158,12 +175,16 @@ func (s *LogsService) pump(ctx context.Context, rc io.ReadCloser,
 	// в картах навсегда, и память растёт на каждый просмотренный проект.
 	defer func() {
 		s.mu.Lock()
-		if cancel, ok := s.cancels[key]; ok {
-			cancel()
-			delete(s.cancels, key)
+		// Сверяем личность: под этим ключом уже может лежать ДРУГОЙ,
+		// только что открытый поток, и трогать его нельзя. Раньше уборка
+		// старого потока отменяла новый, экран получал «оборвался», открывал
+		// заново, и так по кругу - лог заполнялся копиями истории, а
+		// интерфейс мерцал.
+		if cur, ok := s.streams[key]; ok && cur == st {
+			delete(s.streams, key)
 		}
-		delete(s.rings, key)
 		s.mu.Unlock()
+		st.cancel()
 	}()
 
 	sc := bufio.NewScanner(rc)
@@ -208,7 +229,7 @@ func (s *LogsService) pump(ctx context.Context, rc io.ReadCloser,
 				flush()
 				return
 			}
-			rb.push(line)
+			st.ring.push(line)
 			batch = append(batch, line)
 		case <-ticker.C:
 			flush()
@@ -219,11 +240,11 @@ func (s *LogsService) pump(ctx context.Context, rc io.ReadCloser,
 func (s *LogsService) Stop(serverID, projectID string) {
 	key := logKey(serverID, projectID)
 	s.mu.Lock()
-	cancel, ok := s.cancels[key]
-	delete(s.cancels, key)
+	st, ok := s.streams[key]
+	delete(s.streams, key)
 	s.mu.Unlock()
 	if ok {
-		cancel()
+		st.cancel()
 	}
 }
 
@@ -233,10 +254,10 @@ func (s *LogsService) StopServer(serverID string) {
 	prefix := serverID + "\x00"
 	s.mu.Lock()
 	var cancels []context.CancelFunc
-	for k, c := range s.cancels {
+	for k, st := range s.streams {
 		if strings.HasPrefix(k, prefix) {
-			cancels = append(cancels, c)
-			delete(s.cancels, k)
+			cancels = append(cancels, st.cancel)
+			delete(s.streams, k)
 		}
 	}
 	s.mu.Unlock()
@@ -249,12 +270,12 @@ func (s *LogsService) StopServer(serverID string) {
 // должен увидеть контекст, а не пустоту в ожидании новой строки.
 func (s *LogsService) Buffered(serverID, projectID string) []string {
 	s.mu.Lock()
-	rb, ok := s.rings[logKey(serverID, projectID)]
+	st, ok := s.streams[logKey(serverID, projectID)]
 	s.mu.Unlock()
 	if !ok {
 		return nil
 	}
-	return rb.lines()
+	return st.ring.lines()
 }
 
 // shellQuote защищает от имени контейнера с чем-нибудь весёлым внутри.

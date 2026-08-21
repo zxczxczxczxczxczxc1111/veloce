@@ -10,6 +10,17 @@ import type { LogBatch, LogStreamEvent } from "./events";
 // своими руками: каждая перерисовка копирует весь массив.
 const MAX_LINES = 5000;
 
+// Сколько строк истории просить при первом открытии экрана. При возобновлении
+// после обрыва просим НОЛЬ: та же история, приехавшая второй раз, это лог,
+// заполненный копиями самого себя.
+const TAIL_FIRST = 200;
+const TAIL_RESUME = 0;
+
+// Минимальный промежуток между попытками открыть поток. Защита от круга:
+// поток, который обрывается сразу после открытия, иначе крутил бы попытки со
+// скоростью машины, и интерфейс мерцал бы вместе с ним.
+const RETRY_GUARD_MS = 3000;
+
 // LogLine несёт постоянный номер. Без него срез кольца сдвигает все индексы,
 // React считает изменившейся КАЖДУЮ из пяти тысяч строк и переписывает весь
 // список на каждой пачке. Замерено: пик кадра падает со 150 мс до 20.
@@ -68,6 +79,7 @@ export function useLogs(
   // Ссылка на попытку открыть поток: дёргает её эффект, следящий за подъёмом
   // проекта, а живёт она внутри другого эффекта.
   const startRef = useRef<(() => Promise<void>) | null>(null);
+  const lastStartAt = useRef(0);
 
   // Подписи берутся из словаря, но читать хук внутри эффекта нельзя, поэтому
   // забираем их заранее.
@@ -128,8 +140,18 @@ export function useLogs(
 
     async function tryStart() {
       if (!alive) return;
+      // Ограничитель круга: две попытки подряд быстрее секунд трёх это уже не
+      // возобновление, а цикл.
+      const now = Date.now();
+      if (now - lastStartAt.current < RETRY_GUARD_MS) return;
+      lastStartAt.current = now;
       try {
-        await LogsService.Start(serverId, projectId, kindOf(kind));
+        await LogsService.Start(
+          serverId,
+          projectId,
+          kindOf(kind),
+          resumed ? TAIL_RESUME : TAIL_FIRST,
+        );
         if (!alive) return;
         if (resumed) {
           setWaiting(false);
@@ -176,6 +198,12 @@ export function useLogs(
   useEffect(() => {
     if (!live || !waiting) return;
     void startRef.current?.();
+    // Проект уже работает, а поток всё равно не держится: пробуем ещё, но
+    // редко. Молча, потому что отметка про обрыв уже стоит в логе.
+    const id = window.setInterval(() => {
+      void startRef.current?.();
+    }, RETRY_GUARD_MS * 2);
+    return () => window.clearInterval(id);
   }, [live, waiting]);
 
   const setPausedStable = useCallback((v: boolean) => setPaused(v), []);

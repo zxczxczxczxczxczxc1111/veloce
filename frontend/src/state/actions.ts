@@ -96,7 +96,9 @@ export function useRestart(serverId: string, project: ProjectDTO): RestartState 
         // самому в момент, когда прод не поднялся, это издевательство.
         void (async () => {
           try {
-            await LogsService.Start(serverId, project.id, kindOf(project.kind));
+            // 50 строк истории: нам нужна причина, по которой проект не
+            // поднялся, а не весь его журнал.
+            await LogsService.Start(serverId, project.id, kindOf(project.kind), 50);
             await new Promise((r) => window.setTimeout(r, LOG_GRAB_MS));
             const buffered = (await LogsService.Buffered(serverId, project.id)) ?? [];
             setLines(buffered.slice(-20));
