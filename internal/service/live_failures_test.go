@@ -240,6 +240,18 @@ func TestLiveBreakStandContainerStopAndStart(t *testing.T) {
 		}
 	}()
 
+	// Пауза для человека у экрана: такт проектов идёт раз в пять секунд, и на
+	// коротком гашении отличить «панель заметила» от «панель не успела»
+	// нельзя. Задаётся VELOCE_LIVE_DOWN_SECONDS, по умолчанию не ждём.
+	if sec := os.Getenv("VELOCE_LIVE_DOWN_SECONDS"); sec != "" {
+		d, err := time.ParseDuration(sec + "s")
+		if err != nil {
+			t.Fatalf("VELOCE_LIVE_DOWN_SECONDS: %v", err)
+		}
+		t.Logf("стенд лежит, держим %s - смотри на экран", d)
+		time.Sleep(d)
+	}
+
 	down := findProject(t, ps, stand)
 	t.Logf("после остановки: состояние=%s статус=%q цифры известны: cpu=%v mem=%v",
 		down.State, down.Status, down.CPUKnown, down.MemKnown)
