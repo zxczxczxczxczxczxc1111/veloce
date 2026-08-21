@@ -102,6 +102,23 @@ export const ru = {
     counter: "{shown} из {total}",
     toBottom: "Вниз",
   },
+  health: {
+    title: "Health-check",
+    ok: "Отвечает",
+    failed: "Не отвечает",
+    none: "Не настроен",
+    paused: "Проверка идёт только у работающего",
+    code: "код {code}",
+    noAnswer: "ответа нет",
+    lastOk: "последний ответ {ago} назад",
+    neverOk: "успешных ответов не было",
+    ago: {
+      seconds: "{n} с",
+      minutes: "{n} мин",
+      hours: "{n} ч",
+      days: "{n} д",
+    },
+  },
   project: {
     title: "Проект",
     back: "Назад",
@@ -112,6 +129,9 @@ export const ru = {
     fullLogs: "Во весь экран",
   },
   errors: {
+    frozen: "Данные от {time}, связи нет",
+    reconnecting: "Переподключаемся",
+    fixConnection: "Настройка подключения",
     disconnected: "Связи нет, данные от {time}",
     authFailed: "Ключ не принят",
     jumpFailed: "Бастион {host} не отвечает",

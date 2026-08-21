@@ -17,11 +17,19 @@ type Props = {
   serverId: string;
   state: ConnState;
   onConnect: () => void;
+  /** Уйти в настройку подключения: ключ переподключением не лечится. */
+  onFixConnection: () => void;
   /** Открыть экран проекта. */
   onOpenProject: (p: ProjectDTO) => void;
 };
 
-export function Overview({ serverId, state, onConnect, onOpenProject }: Props) {
+export function Overview({
+  serverId,
+  state,
+  onConnect,
+  onFixConnection,
+  onOpenProject,
+}: Props) {
   const t = useT();
   const f = useFormat();
   const history = useMetrics(serverId);
@@ -65,6 +73,24 @@ export function Overview({ serverId, state, onConnect, onOpenProject }: Props) {
   );
   const hiddenCount = (projects ?? []).filter((p) => p.hidden).length;
 
+  // Ключ не принят это ОТДЕЛЬНЫЙ случай, а не «нет связи»: переподключение
+  // бессмысленно, ключ не станет верным от повторной попытки, и кнопка
+  // «подключиться» здесь только злит. Отправляем туда, где это чинится.
+  if (state.kind === "authFailed" || state.kind === "hostKeyUnknown" ||
+      state.kind === "hostKeyChanged") {
+    return (
+      <Card
+        title={
+          state.kind === "authFailed" ? t.errors.authFailed : t.servers.hostKeyUnknown
+        }
+      >
+        <Button variant="accent" onClick={onFixConnection}>
+          {t.errors.fixConnection}
+        </Button>
+      </Card>
+    );
+  }
+
   if (state.kind !== "connected" && last === null) {
     // Пустой экран с плитками-прочерками врал бы: сервер не «показывает
     // ноль», с ним просто нет связи.
@@ -76,6 +102,14 @@ export function Overview({ serverId, state, onConnect, onOpenProject }: Props) {
       </Card>
     );
   }
+
+  // Цифры на экране есть, но связи нет: они ЗАМЕРЛИ. Это самый опасный вид
+  // отказа, потому что выглядит он как работающая панель. Шапка приглушается,
+  // и рядом стоит время последнего успешного замера.
+  const frozen =
+    state.kind === "degraded" || state.kind === "disconnected" || state.kind === "connecting";
+  const frozenAt =
+    state.kind === "degraded" && state.lastOkAt > 0 ? state.lastOkAt : null;
 
   const memPercent = last === null ? 0 : percent(last.memUsed, last.memTotal);
   const disk = last?.disks?.[0];
@@ -91,11 +125,26 @@ export function Overview({ serverId, state, onConnect, onOpenProject }: Props) {
             ? t.overview.waiting
             : f.uptime(last.uptimeSec)}
         </span>
+
+        {frozen && (
+          <span className="num text-sm text-accent">
+            {frozenAt !== null
+              ? t.fmt(t.errors.frozen, {
+                  time: new Date(frozenAt).toLocaleTimeString(),
+                })
+              : t.errors.reconnecting}
+          </span>
+        )}
       </div>
 
       {/* Четыре плитки в ряд: на 1920 и 2560 они помещаются целиком, и весь
-          ответ «всё ли живо» читается одним движением глаз слева направо. */}
-      <div className="grid grid-cols-4 gap-4">
+          ответ «всё ли живо» читается одним движением глаз слева направо.
+          При замерших данных они приглушаются: живые и мёртвые цифры обязаны
+          выглядеть по-разному, иначе панель врёт молча. */}
+      <div
+        className="grid grid-cols-4 gap-4 transition-opacity"
+        style={{ opacity: frozen ? 0.45 : 1 }}
+      >
         <MetricTile
           label={t.overview.cpu}
           value={

@@ -103,6 +103,23 @@ export const en: Dict = {
     counter: "{shown} of {total}",
     toBottom: "To bottom",
   },
+  health: {
+    title: "Health check",
+    ok: "Responding",
+    failed: "Not responding",
+    none: "Not configured",
+    paused: "Checked only while running",
+    code: "code {code}",
+    noAnswer: "no answer",
+    lastOk: "last answer {ago} ago",
+    neverOk: "no successful answers yet",
+    ago: {
+      seconds: "{n}s",
+      minutes: "{n}m",
+      hours: "{n}h",
+      days: "{n}d",
+    },
+  },
   project: {
     title: "Project",
     back: "Back",
@@ -111,6 +128,9 @@ export const en: Dict = {
     fullLogs: "Full screen",
   },
   errors: {
+    frozen: "Data from {time}, no connection",
+    reconnecting: "Reconnecting",
+    fixConnection: "Connection settings",
     disconnected: "Disconnected, data from {time}",
     authFailed: "Key rejected",
     jumpFailed: "Bastion {host} is not responding",

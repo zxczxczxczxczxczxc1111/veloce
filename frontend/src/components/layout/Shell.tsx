@@ -92,6 +92,7 @@ export function Shell() {
               serverId={screen.serverId}
               state={activeState}
               onConnect={() => void ServersService.Connect(screen.serverId)}
+              onFixConnection={() => setScreen({ name: "servers" })}
               onOpenProject={(p) =>
                 setScreen({ name: "project", serverId: screen.serverId, project: p })
               }

@@ -39,9 +39,10 @@ func main() {
 	app.RegisterService(application.NewService(service.NewMetricsService(app, conns)))
 	app.RegisterService(application.NewService(service.NewProjectsService(app, st, conns)))
 	app.RegisterService(application.NewService(service.NewLogsService(app, conns)))
-	// HealthService появится в фазе 9 и будет зарегистрирован там же. Строку
-	// сюда заранее не добавляем: пакета ещё нет, и шаг 13 этой фазы
-	// («сборка проходит») провалился бы с undefined.
+	// HealthService держит время последнего успешного ответа у себя, поэтому
+	// он один на всё приложение: создай его заново на каждый экран, и «отвечал
+	// 14 минут назад» обнулялось бы при каждом переходе.
+	app.RegisterService(application.NewService(service.NewHealthService(conns)))
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "Veloce",

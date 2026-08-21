@@ -1,4 +1,5 @@
 import { useT } from "./i18n";
+import type { Dict } from "./i18n/ru";
 
 type Units = {
   bytes: string[];
@@ -36,6 +37,21 @@ function uptime(u: Units, seconds: number): string {
   return `${m} ${u.minute}`;
 }
 
+// ago переводит отметку времени в «сколько назад». Отдельно от uptime:
+// у аптайма единицы крупные, а последний успешный ответ измеряется секундами
+// ровно в тот момент, когда это важнее всего.
+function ago(d: Dict["health"]["ago"], ms: number, now: number): string {
+  const sec = Math.max(0, Math.round((now - ms) / 1000));
+  if (sec < 60) return fill(d.seconds, sec);
+  if (sec < 3600) return fill(d.minutes, Math.floor(sec / 60));
+  if (sec < 86400) return fill(d.hours, Math.floor(sec / 3600));
+  return fill(d.days, Math.floor(sec / 86400));
+}
+
+function fill(tpl: string, n: number): string {
+  return tpl.replace("{n}", String(n));
+}
+
 export function percentText(v: number): string {
   return v.toFixed(1) + "%";
 }
@@ -43,11 +59,16 @@ export function percentText(v: number): string {
 // Единицы живут в словаре, а не в коде: «МБ» и «MB» это перевод, и хардкод
 // одного из них ломает второй язык молча.
 export function useFormat() {
-  const u = useT().units;
+  const t = useT();
+  const u = t.units;
+  const agoDict = t.health.ago;
   return {
     bytes: (v: number) => bytes(u, v),
     rate: (v: number) => bytes(u, v) + u.perSec,
     uptime: (v: number) => uptime(u, v),
     percent: percentText,
+    // now передаётся снаружи, чтобы значение можно было пересчитать по такту,
+    // а не только при перерисовке по другой причине.
+    ago: (ms: number, now: number = Date.now()) => ago(agoDict, ms, now),
   };
 }
