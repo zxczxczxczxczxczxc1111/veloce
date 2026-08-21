@@ -148,8 +148,8 @@ describe("теги", () => {
   });
 
   it("существующие теги показываются строкой", () => {
-    draw({ server: server({ tags: ["prod", "прод"] }) });
-    expect((screen.getByLabelText("Теги") as HTMLInputElement).value).toBe("prod, прод");
+    draw({ server: server({ tags: ["prod", "web"] }) });
+    expect((screen.getByLabelText("Теги") as HTMLInputElement).value).toBe("prod, web");
   });
 });
 

@@ -99,7 +99,7 @@ describe("поиск", () => {
 
   it("ищет по хосту", () => {
     draw({ servers: many });
-    fireEvent.change(screen.getByLabelText("Фильтр"), { target: { value: "89.125" } });
+    fireEvent.change(screen.getByLabelText("Фильтр"), { target: { value: "203.0" } });
     expect(screen.getByText("Прод")).toBeTruthy();
     expect(screen.queryByText("Стенд")).toBeNull();
   });
