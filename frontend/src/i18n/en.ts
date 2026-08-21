@@ -55,6 +55,8 @@ export const en: Dict = {
     },
   },
   overview: {
+    updated: "updated {ago} ago",
+    updatedNever: "no ticks yet",
     cpu: "CPU",
     memory: "Memory",
     disk: "Disk",
@@ -102,6 +104,9 @@ export const en: Dict = {
     empty: "No logs yet",
     counter: "{shown} of {total}",
     toBottom: "To bottom",
+    streamEnded: "stream ended: project stopped or connection lost",
+    streamResumed: "stream resumed",
+    waitingStream: "waiting to resume",
   },
   health: {
     title: "Health check",

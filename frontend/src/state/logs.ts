@@ -1,8 +1,9 @@
 import { Events } from "@wailsio/runtime";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useT } from "../i18n";
 import { LogsService } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 import { ProjectKind } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/collect";
-import type { LogBatch } from "./events";
+import type { LogBatch, LogStreamEvent } from "./events";
 
 // Буфер на стороне интерфейса ограничен так же, как кольцо на стороне Go.
 // Держать десятки тысяч строк в состоянии React это способ убить приложение
@@ -15,6 +16,8 @@ const MAX_LINES = 5000;
 export type LogLine = {
   id: number;
   text: string;
+  /** Строка от панели, а не от проекта: обрыв потока и его возобновление. */
+  system?: boolean;
 };
 
 export type Logs = {
@@ -22,6 +25,8 @@ export type Logs = {
   paused: boolean;
   setPaused: (v: boolean) => void;
   error: string | null;
+  /** true, пока поток оборван и мы ждём, когда проект поднимется. */
+  waiting: boolean;
 };
 
 export function kindOf(kind: string): ProjectKind {
@@ -30,10 +35,15 @@ export function kindOf(kind: string): ProjectKind {
   return kind === "docker" ? ProjectKind.KindDocker : ProjectKind.KindSystemd;
 }
 
+// Как часто пробуем открыть поток заново после обрыва. Контейнер обычно
+// поднимается за секунды, а долбить сервер чаще незачем.
+const RETRY_MS = 5000;
+
 export function useLogs(serverId: string, projectId: string, kind: string): Logs {
   const [lines, setLines] = useState<LogLine[]>([]);
   const [paused, setPaused] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [waiting, setWaiting] = useState(false);
 
   // Пауза держится в ref, потому что подписка на событие живёт весь срок
   // экрана: читай она состояние напрямую, обработчик остался бы с тем
@@ -45,11 +55,49 @@ export function useLogs(serverId: string, projectId: string, kind: string): Logs
   // и после того, как строка уехала из кольца.
   const seq = useRef(0);
 
+  // Ожидание держим и в ref: обработчики внутри эффекта создаются один раз и
+  // текущего состояния из них не видно.
+  const waitingRef = useRef(false);
+  waitingRef.current = waiting;
+
+  // Подписи берутся из словаря, но читать хук внутри эффекта нельзя, поэтому
+  // забираем их заранее.
+  const t = useT();
+  const streamEndedText = t.logs.streamEnded;
+  const streamResumedText = t.logs.streamResumed;
+
   useEffect(() => {
     let alive = true;
+    let retry = 0;
+    // resumed=false у первого запуска: отметку «поток возобновлён» ставим
+    // только после настоящего обрыва, а не при открытии экрана.
+    let resumed = false;
     setLines([]);
     setError(null);
+    setWaiting(false);
     seq.current = 0;
+
+    // Служебная строка в самом потоке, а не подпись где-то сбоку: обрыв
+    // случился в конкретном месте лога, и видеть его надо там же.
+    const mark = (text: string) => {
+      setLines((prev) => {
+        seq.current += 1;
+        const next = prev.concat([{ id: seq.current, text, system: true }]);
+        return next.length > MAX_LINES ? next.slice(next.length - MAX_LINES) : next;
+      });
+    };
+
+    // Поток умирает вместе с проектом: `docker logs -f` завершается, когда
+    // контейнер остановлен. Без отметки и повторных попыток панель просто
+    // молча замолкает, и понять, что случилось, нельзя.
+    const offStream = Events.On("logs:stream", (e: { data: LogStreamEvent }) => {
+      if (e.data.serverId !== serverId || e.data.projectId !== projectId) return;
+      if (e.data.state === "ended") {
+        setWaiting(true);
+        mark(streamEndedText);
+        retry = window.setTimeout(tryStart, RETRY_MS);
+      }
+    });
 
     // Сначала подписка, потом Start: между этими двумя вызовами уже летят
     // строки, и подписавшись вторым, мы теряли бы начало потока.
@@ -69,9 +117,17 @@ export function useLogs(serverId: string, projectId: string, kind: string): Logs
       });
     });
 
-    void (async () => {
+    async function tryStart() {
+      if (!alive) return;
       try {
         await LogsService.Start(serverId, projectId, kindOf(kind));
+        if (!alive) return;
+        if (resumed) {
+          setWaiting(false);
+          mark(streamResumedText);
+        }
+        resumed = true;
+        setError(null);
         // Уже накопленное на стороне Go: при возврате на экран человек должен
         // увидеть контекст, а не пустоту в ожидании новой строки.
         const buffered = (await LogsService.Buffered(serverId, projectId)) ?? [];
@@ -86,12 +142,22 @@ export function useLogs(serverId: string, projectId: string, kind: string): Logs
         );
       } catch (e: unknown) {
         if (!alive) return;
+        // Проект ещё не поднялся: это ожидаемо, а не поломка. Пробуем снова,
+        // но молча - сыпать ошибкой каждые пять секунд бессмысленно.
+        if (waitingRef.current) {
+          retry = window.setTimeout(tryStart, RETRY_MS);
+          return;
+        }
         setError(e instanceof Error ? e.message : String(e));
       }
-    })();
+    }
+
+    void tryStart();
 
     return () => {
       alive = false;
+      if (retry !== 0) window.clearTimeout(retry);
+      offStream();
       off();
       // Стрим на сервере закрывается вместе с экраном, иначе `docker logs -f`
       // копится на той стороне при каждом заходе.
@@ -101,5 +167,5 @@ export function useLogs(serverId: string, projectId: string, kind: string): Logs
 
   const setPausedStable = useCallback((v: boolean) => setPaused(v), []);
 
-  return { lines, paused, setPaused: setPausedStable, error };
+  return { lines, paused, setPaused: setPausedStable, error, waiting };
 }

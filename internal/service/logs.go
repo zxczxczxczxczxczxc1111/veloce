@@ -58,6 +58,18 @@ type LogBatch struct {
 	Lines     []string `json:"lines"`
 }
 
+// LogStreamEvent сообщает интерфейсу, что с потоком. Без него остановка
+// контейнера выглядит как «логи почему-то замолчали»: `docker logs -f`
+// завершается вместе с контейнером, и отличить это от тишины в сервисе
+// человек не может никак.
+type LogStreamEvent struct {
+	ServerID  string `json:"serverId"`
+	ProjectID string `json:"projectId"`
+	// started - поток открыт, ended - поток кончился сам (контейнер
+	// остановлен, юнит убит, соединение отвалилось).
+	State string `json:"state"`
+}
+
 type LogsService struct {
 	app   *application.App
 	conns *ConnRegistry
@@ -109,6 +121,10 @@ func (s *LogsService) Start(serverID, projectID string, kind collect.ProjectKind
 	s.rings[key] = rb
 	s.mu.Unlock()
 
+	s.app.Event.Emit("logs:stream", LogStreamEvent{
+		ServerID: serverID, ProjectID: projectID, State: "started",
+	})
+
 	go s.pump(ctx, rc, rb, key, serverID, projectID)
 	return nil
 }
@@ -121,6 +137,16 @@ func (s *LogsService) pump(ctx context.Context, rc io.ReadCloser,
 	rb *ring, key, serverID, projectID string) {
 
 	defer rc.Close()
+	// О конце потока сообщаем ОТДЕЛЬНО от уборки: уборка происходит и при
+	// закрытии экрана, а сообщать надо только про конец, который случился сам.
+	defer func() {
+		if ctx.Err() != nil {
+			return // поток закрыли мы сами, уходя с экрана
+		}
+		s.app.Event.Emit("logs:stream", LogStreamEvent{
+			ServerID: serverID, ProjectID: projectID, State: "ended",
+		})
+	}()
 	// Убираем за собой и при штатном конце потока (контейнер остановили), а не
 	// только по Stop с фронта. Иначе отменялка и кольцо на 5000 строк остаются
 	// в картах навсегда, и память растёт на каждый просмотренный проект.

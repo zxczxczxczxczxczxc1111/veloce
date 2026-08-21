@@ -9,13 +9,22 @@ const WINDOW_POINTS = 150;
 export type MetricsHistory = {
   /** Последний такт целиком. null - тактов ещё не было. */
   last: MetricsTick | null;
+  /** Когда пришёл последний такт, мс. 0 - тактов не было. */
+  lastAt: number;
   cpu: number[];
   memPercent: number[];
   rx: number[];
   tx: number[];
 };
 
-const empty: MetricsHistory = { last: null, cpu: [], memPercent: [], rx: [], tx: [] };
+const empty: MetricsHistory = {
+  last: null,
+  lastAt: 0,
+  cpu: [],
+  memPercent: [],
+  rx: [],
+  tx: [],
+};
 
 function push(series: number[], v: number): number[] {
   const next = series.length >= WINDOW_POINTS ? series.slice(1) : series.slice();
@@ -43,6 +52,7 @@ export function useMetrics(serverId: string | null): MetricsHistory {
         const missing = t.missing ?? [];
         return {
           last: t,
+          lastAt: Date.now(),
           // Не прочитанная метрика не дорисовывает точку. Ноль тут значит
           // «нагрузки нет», а у нас «не смогли прочитать»: это
           // противоположные утверждения, и линия провалилась бы в пол.

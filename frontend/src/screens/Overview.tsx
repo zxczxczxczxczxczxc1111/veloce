@@ -4,6 +4,7 @@ import { ProjectsService } from "../../bindings/github.com/zxczxczxczxczxczxc111
 import type { ProjectDTO } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 import type { ProjectsTick } from "../state/events";
 import { MetricTile, Meter } from "../components/MetricTile";
+import { TickAge } from "../components/TickAge";
 import { ProjectRow } from "../components/ProjectRow";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -125,6 +126,11 @@ export function Overview({
             ? t.overview.waiting
             : f.uptime(last.uptimeSec)}
         </span>
+
+        {/* Возраст данных стоит ВСЕГДА, а не только при отказе: увидеть, что
+            цифры перестали двигаться, человек должен раньше, чем это заметит
+            транспорт. */}
+        <TickAge at={history.lastAt} />
 
         {frozen && (
           <span className="num text-sm text-accent">

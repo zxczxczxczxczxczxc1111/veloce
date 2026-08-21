@@ -54,6 +54,8 @@ export const ru = {
     },
   },
   overview: {
+    updated: "обновлено {ago} назад",
+    updatedNever: "тактов ещё не было",
     cpu: "Процессор",
     memory: "Память",
     disk: "Диск",
@@ -101,6 +103,9 @@ export const ru = {
     empty: "Логов пока нет",
     counter: "{shown} из {total}",
     toBottom: "Вниз",
+    streamEnded: "поток прерван: проект остановлен или связь потеряна",
+    streamResumed: "поток возобновлён",
+    waitingStream: "ждём возобновления",
   },
   health: {
     title: "Health-check",

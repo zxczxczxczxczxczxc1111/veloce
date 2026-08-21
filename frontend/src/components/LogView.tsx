@@ -17,6 +17,8 @@ type PanelProps = {
   paused: boolean;
   setPaused: (v: boolean) => void;
   error: string | null;
+  /** Поток оборван, ждём подъёма проекта. */
+  waiting?: boolean;
   className?: string;
 };
 
@@ -36,6 +38,7 @@ export function LogView({ serverId, projectId, kind, className = "" }: Props) {
       paused={logs.paused}
       setPaused={logs.setPaused}
       error={logs.error}
+      waiting={logs.waiting}
       className={className}
     />
   );
@@ -46,6 +49,7 @@ export function LogPanel({
   paused,
   setPaused,
   error,
+  waiting = false,
   className = "",
 }: PanelProps) {
   const t = useT();
@@ -58,7 +62,9 @@ export function LogPanel({
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (q === "") return lines;
-    return lines.filter((l) => l.text.toLowerCase().includes(q));
+    // Служебные строки фильтр не прячет: обрыв потока это часть картины, а не
+    // содержимое лога, и терять его при поиске нельзя.
+    return lines.filter((l) => l.system === true || l.text.toLowerCase().includes(q));
   }, [lines, filter]);
 
   // Автопрокрутка отключается, как только человек ушёл вверх, и включается
@@ -98,6 +104,9 @@ export function LogPanel({
           aria-label={t.logs.filter}
           className="h-8 flex-1 rounded-lg border border-border bg-fill-subtle px-3 text-sm text-foreground placeholder:text-fg-muted transition-colors hover:border-border-hover"
         />
+        {waiting && (
+          <span className="shrink-0 text-xs text-accent">{t.logs.waitingStream}</span>
+        )}
         <span className="num w-28 shrink-0 text-right text-xs text-fg-muted">
           {t.fmt(t.logs.counter, {
             shown: String(shown.length),
@@ -121,7 +130,7 @@ export function LogPanel({
         {/* Ключ по номеру строки, а не по индексу: индекс сдвигается на
             каждом срезе кольца, и React переписывает весь список целиком. */}
         {shown.map((l) => (
-          <Row key={l.id} text={l.text} />
+          <Row key={l.id} text={l.text} system={l.system === true} />
         ))}
       </div>
 
@@ -148,6 +157,17 @@ export function LogPanel({
 // высоты это прятала. С ограниченным контейнером браузер и так не трогает то,
 // что за пределами экрана, а оценка высоты вместо настоящей мешает
 // автопрокрутке.
-const Row = memo(function Row({ text }: { text: string }) {
+const Row = memo(function Row({ text, system }: { text: string; system: boolean }) {
+  if (system) {
+    // Служебная строка отличается от строки проекта и цветом, и линиями:
+    // спутать «панель говорит» с «сервис говорит» нельзя.
+    return (
+      <div className="my-1 flex items-center gap-3 text-accent">
+        <span className="h-px flex-1 bg-accent/30" />
+        <span className="shrink-0">{text}</span>
+        <span className="h-px flex-1 bg-accent/30" />
+      </div>
+    );
+  }
   return <div className="text-fg-secondary">{text}</div>;
 });

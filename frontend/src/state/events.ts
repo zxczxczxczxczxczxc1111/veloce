@@ -42,6 +42,13 @@ export type LogBatch = {
   lines: string[] | null;
 };
 
+export type LogStreamEvent = {
+  serverId: string;
+  projectId: string;
+  /** started - поток открыт, ended - поток кончился сам. */
+  state: string;
+};
+
 export type ProjectsTick = {
   serverId: string;
   projects: import("../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service").ProjectDTO[] | null;
