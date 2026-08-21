@@ -1,0 +1,20 @@
+# Концы строк решает репозиторий, а не настройка core.autocrlf на конкретной машине.
+# В индексе и в рабочем дереве всегда LF, иначе один чекаут с autocrlf=false
+# однажды выдаст диff на весь файл вместо одной правки.
+* text=auto eol=lf
+
+# Файлы, которым CRLF нужен по существу: их читает cmd.exe, а он с LF капризничает.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Скрипту gradle расширения не досталось, а LF ему жизненно необходим.
+build/android/gradlew text eol=lf
+
+# Двоичное. Git сюда не лезет вообще, иначе портит содержимое.
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary
+*.ttf binary
+*.jar binary
+*.car binary
