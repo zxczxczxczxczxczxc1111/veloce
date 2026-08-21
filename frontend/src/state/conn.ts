@@ -133,7 +133,33 @@ function isFatal(kind: ConnState["kind"]): boolean {
 // команду. Погасив такты при обрыве, мы убираем единственное, что эти попытки
 // делает, и соединение не восстановится само никогда.
 export function useServerTickers(serverId: string | null, state: ConnState): void {
-  const run = serverId !== null && state.kind !== "idle" && !isFatal(state.kind);
+  // Признак «такты взведены» ЗАЩЁЛКИВАЕТСЯ на подключении и держится дальше.
+  //
+  // Просто «состояние не idle» тут не годится: оно истинно уже на
+  // «подключаемся», такты стартуют до появления соединения, получают отказ, а
+  // когда соединение появляется, признак не меняется - и эффект больше не
+  // перезапускается. Такты не идут вообще, а экран об этом молчит.
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    setArmed(false); // другой сервер - свои такты
+  }, [serverId]);
+
+  useEffect(() => {
+    // Ключ не примут и хост не подтвердят от повторной попытки: тут такты
+    // бессмысленны, и признак снимается.
+    if (isFatal(state.kind)) {
+      setArmed(false);
+      return;
+    }
+    // Взводим ТОЛЬКО когда соединение точно есть.
+    if (state.kind === "connected") setArmed(true);
+    // degraded и disconnected признак НЕ снимают: первый значит «такт не
+    // удался», второй лечится переподключением, которое запускается как раз
+    // попыткой выполнить команду, то есть тактом.
+  }, [state.kind]);
+
+  const run = serverId !== null && armed;
 
   useEffect(() => {
     diag(`useServerTickers: сервер=${serverId ?? "нет"} такты нужны=${run}`);
