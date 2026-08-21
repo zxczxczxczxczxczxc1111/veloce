@@ -74,7 +74,10 @@ export const ru = {
     byTimer: "по таймеру {name}",
     bySocket: "по сокету {name}",
     restart: "Перезапустить",
+    restarting: "Ждём подъёма",
+    dismiss: "Понятно",
     confirmRestart: "Перезапустить {name}?",
+    confirmRestartDetail: "Проект остановится и поднимется заново",
     showAll: "Показать системные",
     hideAll: "Скрыть системные",
     hiddenCount: "скрыто {n}",
@@ -96,6 +99,17 @@ export const ru = {
     pause: "Пауза",
     resume: "Продолжить",
     empty: "Логов пока нет",
+    counter: "{shown} из {total}",
+    toBottom: "Вниз",
+  },
+  project: {
+    title: "Проект",
+    back: "Назад",
+    restarts: "Перезапусков",
+    // NRestarts это счётчик systemd с последнего ручного старта, а не за
+    // сутки. Подпись говорит правду вместо красивого, но выдуманного числа.
+    restartsNote: "с последнего запуска",
+    fullLogs: "Во весь экран",
   },
   errors: {
     disconnected: "Связи нет, данные от {time}",

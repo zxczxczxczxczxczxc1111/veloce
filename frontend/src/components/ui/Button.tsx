@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 type Variant = "accent" | "secondary" | "ghost" | "danger";
@@ -22,16 +23,17 @@ const variants: Record<Variant, string> = {
   danger: "bg-transparent text-down border border-down/25 hover:bg-down/10",
 };
 
-export function Button({
-  variant = "secondary",
-  dense = false,
-  className = "",
-  children,
-  ...rest
-}: Props) {
+// forwardRef нужен диалогу подтверждения: он уводит фокус на «Отмену», а без
+// ссылки на узел добраться до неё нечем. React здесь 18, где ref ещё не
+// обычный проп.
+export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
+  { variant = "secondary", dense = false, className = "", children, ...rest },
+  ref,
+) {
   const height = dense ? "h-7 px-2.5 text-xs" : "h-9 px-3.5 text-sm";
   return (
     <button
+      ref={ref}
       // transition-all запрещён: он анимирует размеры и отступы, из-за чего
       // наведение дёргает раскладку. Перечисляем только то, что меняется.
       // Длительность и кривая не пишутся: они заданы токенами в tokens.css.
@@ -50,4 +52,4 @@ export function Button({
       {children}
     </button>
   );
-}
+});

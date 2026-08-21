@@ -17,9 +17,11 @@ type Props = {
   serverId: string;
   state: ConnState;
   onConnect: () => void;
+  /** Открыть экран проекта. */
+  onOpenProject: (p: ProjectDTO) => void;
 };
 
-export function Overview({ serverId, state, onConnect }: Props) {
+export function Overview({ serverId, state, onConnect, onOpenProject }: Props) {
   const t = useT();
   const f = useFormat();
   const history = useMetrics(serverId);
@@ -190,6 +192,7 @@ export function Overview({ serverId, state, onConnect }: Props) {
                   serverId={serverId}
                   project={p}
                   onChanged={() => void reload()}
+                  onOpen={onOpenProject}
                 />
               ))}
             </ul>

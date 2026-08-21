@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { ServersService } from "../../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 import type { Server } from "../../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/store";
 import { ContentState } from "../ui/ContentState";
-import { Card } from "../ui/Card";
 import { ServerRail } from "./ServerRail";
 import { Servers } from "../../screens/Servers";
 import { Overview } from "../../screens/Overview";
+import { Project } from "../../screens/Project";
+import { Logs } from "../../screens/Logs";
+import type { ProjectDTO } from "../../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 import { useConnState, useServerTickers } from "../../state/conn";
 
 // Переключение экранов это состояние, а не роутер. Экранов четыре, ссылками
@@ -14,8 +16,10 @@ import { useConnState, useServerTickers } from "../../state/conn";
 export type Screen =
   | { name: "servers" }
   | { name: "overview"; serverId: string }
-  | { name: "project"; serverId: string; projectId: string; kind: string }
-  | { name: "logs"; serverId: string; projectId: string; kind: string };
+  // Проект несём целиком, а не по идентификатору: экран обязан нарисоваться
+  // сразу, а не ждать первого такта, чтобы узнать имя и состояние.
+  | { name: "project"; serverId: string; project: ProjectDTO }
+  | { name: "logs"; serverId: string; project: ProjectDTO };
 
 export function Shell() {
   const [servers, setServers] = useState<Server[] | null>(null);
@@ -65,7 +69,7 @@ export function Shell() {
         onAdd={() => setScreen({ name: "servers" })}
       />
 
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6">
         <ContentState
           pending={servers === null}
           fetching={fetching}
@@ -88,14 +92,41 @@ export function Shell() {
               serverId={screen.serverId}
               state={activeState}
               onConnect={() => void ServersService.Connect(screen.serverId)}
+              onOpenProject={(p) =>
+                setScreen({ name: "project", serverId: screen.serverId, project: p })
+              }
             />
           )}
 
-          {(screen.name === "project" || screen.name === "logs") && (
-            // Экраны проекта и логов приезжают в фазе 8.
-            <Card title={screen.name}>
-              <p className="text-sm text-fg-secondary">{activeId ?? "-"}</p>
-            </Card>
+          {screen.name === "project" && (
+            <Project
+              serverId={screen.serverId}
+              project={screen.project}
+              onBack={() => setScreen({ name: "overview", serverId: screen.serverId })}
+              onFullLogs={() =>
+                setScreen({
+                  name: "logs",
+                  serverId: screen.serverId,
+                  project: screen.project,
+                })
+              }
+            />
+          )}
+
+          {screen.name === "logs" && (
+            <Logs
+              serverId={screen.serverId}
+              projectId={screen.project.id}
+              kind={screen.project.kind}
+              name={screen.project.name}
+              onBack={() =>
+                setScreen({
+                  name: "project",
+                  serverId: screen.serverId,
+                  project: screen.project,
+                })
+              }
+            />
           )}
         </ContentState>
       </main>

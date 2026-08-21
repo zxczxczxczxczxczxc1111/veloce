@@ -50,6 +50,10 @@ func (r *ring) lines() []string {
 }
 
 type LogBatch struct {
+	// ServerID обязателен: буфер на стороне Go разделён по паре сервер-проект,
+	// а событие без сервера склеивало бы на экране логи `nginx` с машины A и
+	// `nginx` с машины B в один поток.
+	ServerID  string   `json:"serverId"`
 	ProjectID string   `json:"projectId"`
 	Lines     []string `json:"lines"`
 }
@@ -105,7 +109,7 @@ func (s *LogsService) Start(serverID, projectID string, kind collect.ProjectKind
 	s.rings[key] = rb
 	s.mu.Unlock()
 
-	go s.pump(ctx, rc, rb, key, projectID)
+	go s.pump(ctx, rc, rb, key, serverID, projectID)
 	return nil
 }
 
@@ -114,7 +118,7 @@ func (s *LogsService) Start(serverID, projectID string, kind collect.ProjectKind
 // (контейнер остановили) - то есть каждый заход на экран логов оставлял на
 // сервере по одному живому `docker logs -f`.
 func (s *LogsService) pump(ctx context.Context, rc io.ReadCloser,
-	rb *ring, key, projectID string) {
+	rb *ring, key, serverID, projectID string) {
 
 	defer rc.Close()
 	// Убираем за собой и при штатном конце потока (контейнер остановили), а не
@@ -155,7 +159,9 @@ func (s *LogsService) pump(ctx context.Context, rc io.ReadCloser,
 		if len(batch) == 0 {
 			return
 		}
-		s.app.Event.Emit("logs:batch", LogBatch{ProjectID: projectID, Lines: batch})
+		s.app.Event.Emit("logs:batch", LogBatch{
+			ServerID: serverID, ProjectID: projectID, Lines: batch,
+		})
 		batch = nil
 	}
 

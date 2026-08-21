@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { ProjectsService } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 import type { ProjectDTO } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
-import { ProjectKind } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/collect";
 import { useFormat } from "../format";
 import { useT } from "../i18n";
+import { useRestart } from "../state/actions";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
 
@@ -12,47 +13,33 @@ type Props = {
   project: ProjectDTO;
   /** Перечитать список после сохранения настройки. */
   onChanged: () => void;
+  /** Открыть экран проекта. */
+  onOpen: (p: ProjectDTO) => void;
 };
 
-export function ProjectRow({ serverId, project, onChanged }: Props) {
+export function ProjectRow({ serverId, project, onChanged, onOpen }: Props) {
   const t = useT();
   const f = useFormat();
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function restart() {
-    setBusy(true);
-    setError(null);
-    try {
-      // Вид проекта в DTO это строка, а биндинг Action ждёт перечисление.
-      // Приводим ЯВНО через сравнение, а не кастом: неизвестное значение
-      // должно упереться здесь, а не улететь в подстановку команды на сервере.
-      const kind =
-        project.kind === "docker" ? ProjectKind.KindDocker : ProjectKind.KindSystemd;
-      await ProjectsService.Action(serverId, project.id, kind, "restart");
-      setConfirm(false);
-    } catch (e: unknown) {
-      // Ошибка живёт в карточке проекта, остальной экран продолжает работать:
-      // недоступный docker не повод гасить всю панель.
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const restart = useRestart(serverId, project);
 
   return (
     <li className="border-b border-border last:border-b-0">
       <div className="flex items-center gap-4 px-5 py-2.5">
         <StatusDot state={project.state} />
 
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm">{project.name}</span>
+        <button
+          onClick={() => onOpen(project)}
+          className="min-w-0 flex-1 cursor-pointer text-left"
+        >
+          <span className="block truncate text-sm hover:text-accent">
+            {project.name}
+          </span>
           <span className="block truncate text-xs text-fg-muted">
             {project.kind} · {detail(t, project)}
           </span>
-        </span>
+        </button>
 
         {/* Потребление в колонках: моноширинные цифры не дают строкам скакать
             на каждом такте. */}
@@ -64,29 +51,16 @@ export function ProjectRow({ serverId, project, onChanged }: Props) {
         </span>
 
         <span className="flex shrink-0 items-center gap-2">
-          {confirm ? (
-            <>
-              <Button dense variant="danger" disabled={busy} onClick={() => void restart()}>
-                {t.fmt(t.projects.confirmRestart, { name: project.name })}
-              </Button>
-              <Button dense variant="ghost" onClick={() => setConfirm(false)}>
-                {t.projects.cancel}
-              </Button>
-            </>
-          ) : (
-            <Button dense onClick={() => setConfirm(true)}>
-              {t.projects.restart}
-            </Button>
-          )}
+          <Button dense disabled={restart.pending} onClick={() => setConfirm(true)}>
+            {restart.pending ? t.projects.restarting : t.projects.restart}
+          </Button>
           <Button dense variant="ghost" onClick={() => setOpen((v) => !v)}>
             {t.projects.settings}
           </Button>
         </span>
       </div>
 
-      {error !== null && (
-        <p className="px-5 pb-2.5 text-sm text-down">{error}</p>
-      )}
+      <RestartOutcome restart={restart} name={project.name} />
 
       {open && (
         <ProjectSettings
@@ -96,8 +70,61 @@ export function ProjectRow({ serverId, project, onChanged }: Props) {
           onChanged={onChanged}
         />
       )}
+
+      {confirm && (
+        <ConfirmDialog
+          title={t.fmt(t.projects.confirmRestart, { name: project.name })}
+          detail={t.projects.confirmRestartDetail}
+          confirmLabel={t.projects.restart}
+          onConfirm={() => {
+            setConfirm(false);
+            restart.run();
+          }}
+          onCancel={() => setConfirm(false)}
+        />
+      )}
     </li>
   );
+}
+
+// RestartOutcome показывает, чем кончился перезапуск. Молчаливая кнопка это
+// худший вариант: человек не знает, поднялся проект или нет, и жмёт ещё раз.
+export function RestartOutcome({
+  restart,
+  name,
+}: {
+  restart: ReturnType<typeof useRestart>;
+  name: string;
+}) {
+  const t = useT();
+  if (restart.error === null && !restart.failed) return null;
+
+  return (
+    <div className="border-t border-border bg-elevated px-5 py-3">
+      {restart.error !== null && <p className="text-sm text-down">{restart.error}</p>}
+      {restart.failed && (
+        <>
+          <p className="text-sm text-down">{t.fmt(t.errors.actionFailed, { name })}</p>
+          {restart.lines.length > 0 && (
+            <pre className="num mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-fill-subtle p-3 font-mono text-xs text-fg-secondary">
+              {restart.lines.join("\n")}
+            </pre>
+          )}
+        </>
+      )}
+      <Button dense variant="ghost" className="mt-2" onClick={restart.dismiss}>
+        {t.projects.dismiss}
+      </Button>
+    </div>
+  );
+}
+
+// detail дописывает к строке состояния то, ЧЕГО ждёт юнит. «Ждёт» без ответа
+// на вопрос «чего» это загадка, а не сообщение.
+export function detail(t: ReturnType<typeof useT>, p: ProjectDTO): string {
+  if (p.state !== "waiting" || p.trigger === "") return p.status;
+  const tpl = p.trigger.endsWith(".socket") ? t.projects.bySocket : t.projects.byTimer;
+  return t.fmt(tpl, { name: p.trigger });
 }
 
 // Настройка живёт ВНУТРИ карточки проекта. Отдельный экран ради трёх полей
@@ -181,14 +208,6 @@ function ProjectSettings({
   );
 }
 
-// detail дописывает к строке состояния то, ЧЕГО ждёт юнит. «Ждёт» без ответа
-// на вопрос «чего» это загадка, а не сообщение.
-function detail(t: ReturnType<typeof useT>, p: ProjectDTO): string {
-  if (p.state !== "waiting" || p.trigger === "") return p.status;
-  const tpl = p.trigger.endsWith(".socket") ? t.projects.bySocket : t.projects.byTimer;
-  return t.fmt(tpl, { name: p.trigger });
-}
-
 // Состояние никогда не передаётся ОДНИМ цветом: рядом всегда есть слово.
 // Зелёное и красное неразличимы у части читателей, а точка без подписи в такой
 // панели это единственный носитель самого важного факта.
@@ -196,7 +215,7 @@ function detail(t: ReturnType<typeof useT>, p: ProjectDTO): string {
 // Зелёный означает «есть живой процесс прямо сейчас», и только это. Юнит,
 // который отработал и завершился, серый: он сделал дело, но не крутится, и
 // зелёный на нём был бы неправдой.
-function StatusDot({ state }: { state: string }) {
+export function StatusDot({ state }: { state: string }) {
   const t = useT();
   const map: Record<string, { cls: string; label: string }> = {
     running: { cls: "bg-up", label: t.projects.running },

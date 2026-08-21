@@ -36,6 +36,12 @@ export type MetricsTick = {
   missing: string[] | null;
 };
 
+export type LogBatch = {
+  serverId: string;
+  projectId: string;
+  lines: string[] | null;
+};
+
 export type ProjectsTick = {
   serverId: string;
   projects: import("../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service").ProjectDTO[] | null;

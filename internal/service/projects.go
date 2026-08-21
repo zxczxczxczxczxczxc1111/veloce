@@ -66,6 +66,22 @@ func (p *ProjectsService) Discover(serverID string) ([]ProjectDTO, error) {
 	return applyOverrides(withStats, p.st.Overrides(serverID)), nil
 }
 
+// Restarts отдаёт число перезапусков юнита. Это NRestarts из systemd, то есть
+// счётчик автоматических перезапусков с момента последнего ручного старта, а
+// НЕ «за сутки»: суточное число из systemd не достаётся вовсе, за ним пришлось
+// бы разбирать журнал. У контейнеров возвращается -1, и интерфейс рисует
+// прочерк вместо выдуманного числа.
+func (p *ProjectsService) Restarts(serverID, projectID string,
+	kind collect.ProjectKind) (int, error) {
+
+	conn, err := p.conns.Get(serverID)
+	if err != nil {
+		return -1, err
+	}
+	return collect.Restarts(context.Background(), conn,
+		collect.Project{Kind: kind, ID: projectID})
+}
+
 func (p *ProjectsService) SaveOverride(o store.ProjectOverride) error {
 	return p.st.PutOverride(o)
 }
