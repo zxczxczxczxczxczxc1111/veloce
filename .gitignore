@@ -12,3 +12,6 @@ build/android/gen/
 dist/
 node_modules/
 frontend/bindings/
+# Генератор биндингов оставляет за собой временный каталог, если падает
+# посреди работы. В репозитории ему делать нечего.
+frontend/.bindings-tmp-*/
