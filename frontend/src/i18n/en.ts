@@ -4,6 +4,13 @@ export const en: Dict = {
   app: {
     language: "Language",
   },
+  units: {
+    bytes: ["B", "KB", "MB", "GB", "TB", "PB"],
+    perSec: "/s",
+    day: "d",
+    hour: "h",
+    minute: "min",
+  },
   servers: {
     title: "Servers",
     add: "Add server",
@@ -52,6 +59,8 @@ export const en: Dict = {
     network: "Network",
     uptime: "Uptime",
     waiting: "Waiting for second sample",
+    notConnected: "Not connected to the server",
+    connect: "Connect",
   },
   projects: {
     title: "Projects",
@@ -61,6 +70,19 @@ export const en: Dict = {
     restart: "Restart",
     confirmRestart: "Restart {name}?",
     showAll: "Show system units",
+    hideAll: "Hide system units",
+    hiddenCount: "{n} hidden",
+    empty: "No projects found",
+    settings: "Settings",
+    label: "Name",
+    labelHint: "Empty - show the identifier as is",
+    hide: "Hide from the list",
+    health: "Health check",
+    healthHint: "Check URL, empty - no check",
+    save: "Save",
+    cancel: "Cancel",
+    cpu: "CPU",
+    memory: "Memory",
   },
   logs: {
     title: "Logs",

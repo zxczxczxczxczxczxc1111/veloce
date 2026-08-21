@@ -2,6 +2,14 @@ export const ru = {
   app: {
     language: "Язык",
   },
+  units: {
+    // Индекс это степень 1024: Б, КБ, МБ, ГБ, ТБ, ПБ.
+    bytes: ["Б", "КБ", "МБ", "ГБ", "ТБ", "ПБ"],
+    perSec: "/с",
+    day: "д",
+    hour: "ч",
+    minute: "мин",
+  },
   servers: {
     title: "Серверы",
     add: "Добавить сервер",
@@ -50,6 +58,8 @@ export const ru = {
     network: "Сеть",
     uptime: "Аптайм",
     waiting: "Ждём второй замер",
+    notConnected: "Нет соединения с сервером",
+    connect: "Подключиться",
   },
   projects: {
     title: "Проекты",
@@ -59,6 +69,19 @@ export const ru = {
     restart: "Перезапустить",
     confirmRestart: "Перезапустить {name}?",
     showAll: "Показать системные",
+    hideAll: "Скрыть системные",
+    hiddenCount: "скрыто {n}",
+    empty: "Проектов не найдено",
+    settings: "Настройка",
+    label: "Имя",
+    labelHint: "Пусто - показываем идентификатор как есть",
+    hide: "Скрыть из списка",
+    health: "Health-check",
+    healthHint: "URL проверки, пусто - проверки нет",
+    save: "Сохранить",
+    cancel: "Отмена",
+    cpu: "Процессор",
+    memory: "Память",
   },
   logs: {
     title: "Логи",

@@ -5,6 +5,7 @@ import { ContentState } from "../ui/ContentState";
 import { Card } from "../ui/Card";
 import { ServerRail } from "./ServerRail";
 import { Servers } from "../../screens/Servers";
+import { Overview } from "../../screens/Overview";
 import { useConnState, useServerTickers } from "../../state/conn";
 
 // Переключение экранов это состояние, а не роутер. Экранов четыре, ссылками
@@ -74,14 +75,24 @@ export function Shell() {
             <p className="mb-4 text-sm text-down">{error}</p>
           )}
 
-          {screen.name === "servers" ? (
+          {screen.name === "servers" && (
             <Servers
               servers={servers ?? []}
               onChanged={reload}
               onOpen={openServer}
             />
-          ) : (
-            // Экраны обзора, проекта и логов приезжают в фазах 7-8.
+          )}
+
+          {screen.name === "overview" && (
+            <Overview
+              serverId={screen.serverId}
+              state={activeState}
+              onConnect={() => void ServersService.Connect(screen.serverId)}
+            />
+          )}
+
+          {(screen.name === "project" || screen.name === "logs") && (
+            // Экраны проекта и логов приезжают в фазе 8.
             <Card title={screen.name}>
               <p className="text-sm text-fg-secondary">{activeId ?? "-"}</p>
             </Card>

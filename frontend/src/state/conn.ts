@@ -1,5 +1,6 @@
 import { Events } from "@wailsio/runtime";
 import { useEffect, useRef, useState } from "react";
+import type { ConnEvent } from "./events";
 import {
   LogsService,
   MetricsService,
@@ -22,14 +23,6 @@ export type ConnState =
   // уместна кнопка «доверять», а у сменившегося ключа человек обязан сравнить
   // два отпечатка. Одна кнопка на оба случая и есть та самая дыра.
   | { kind: "hostKeyChanged"; fingerprint: string; known: string };
-
-type ConnEvent = {
-  serverId: string;
-  state: string;
-  fingerprint?: string;
-  knownFingerprint?: string;
-  message?: string;
-};
 
 export function useConnState(serverId: string | null): ConnState {
   const [state, setState] = useState<ConnState>({ kind: "idle" });

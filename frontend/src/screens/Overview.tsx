@@ -1,0 +1,201 @@
+import { Events } from "@wailsio/runtime";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ProjectsService } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
+import type { ProjectDTO } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
+import type { ProjectsTick } from "../state/events";
+import { MetricTile, Meter } from "../components/MetricTile";
+import { ProjectRow } from "../components/ProjectRow";
+import { Button } from "../components/ui/Button";
+import { Card } from "../components/ui/Card";
+import { ContentState } from "../components/ui/ContentState";
+import { useFormat } from "../format";
+import { useT } from "../i18n";
+import type { ConnState } from "../state/conn";
+import { percent, useMetrics } from "../state/metrics";
+
+type Props = {
+  serverId: string;
+  state: ConnState;
+  onConnect: () => void;
+};
+
+export function Overview({ serverId, state, onConnect }: Props) {
+  const t = useT();
+  const f = useFormat();
+  const history = useMetrics(serverId);
+  const last = history.last;
+  const missing = last?.missing ?? [];
+
+  const [projects, setProjects] = useState<ProjectDTO[] | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    try {
+      setProjects((await ProjectsService.Discover(serverId)) ?? []);
+      setError(null);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+      setProjects([]);
+    }
+  }, [serverId]);
+
+  // Первый список запрашиваем сами: такт проектов идёт раз в пять секунд, и
+  // без этого экран пять секунд стоял бы пустым после подключения.
+  useEffect(() => {
+    if (state.kind !== "connected") return;
+    void reload();
+  }, [state.kind, reload]);
+
+  useEffect(() => {
+    const off = Events.On("projects:tick", (e: { data: ProjectsTick }) => {
+      if (e.data.serverId !== serverId) return;
+      setProjects(e.data.projects ?? []);
+    });
+    return () => {
+      off();
+    };
+  }, [serverId]);
+
+  const shown = useMemo(
+    () => (projects ?? []).filter((p) => showHidden || !p.hidden),
+    [projects, showHidden],
+  );
+  const hiddenCount = (projects ?? []).filter((p) => p.hidden).length;
+
+  if (state.kind !== "connected" && last === null) {
+    // Пустой экран с плитками-прочерками врал бы: сервер не «показывает
+    // ноль», с ним просто нет связи.
+    return (
+      <Card title={t.overview.notConnected}>
+        <Button variant="accent" onClick={onConnect}>
+          {t.overview.connect}
+        </Button>
+      </Card>
+    );
+  }
+
+  const memPercent = last === null ? 0 : percent(last.memUsed, last.memTotal);
+  const disk = last?.disks?.[0];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-baseline gap-3">
+        <span className="text-[10px] uppercase tracking-[0.08em] text-fg-muted">
+          {t.overview.uptime}
+        </span>
+        <span className="num text-sm">
+          {last === null || missing.includes("uptime")
+            ? t.overview.waiting
+            : f.uptime(last.uptimeSec)}
+        </span>
+      </div>
+
+      {/* Четыре плитки в ряд: на 1920 и 2560 они помещаются целиком, и весь
+          ответ «всё ли живо» читается одним движением глаз слева направо. */}
+      <div className="grid grid-cols-4 gap-4">
+        <MetricTile
+          label={t.overview.cpu}
+          value={
+            last === null || missing.includes("cpu") ? null : f.percent(last.cpuPercent)
+          }
+          points={history.cpu}
+          // Ось процентов фиксированная. Плавающая рисует панику на спокойном
+          // сервере: шум в полпроцента растягивается на всю высоту плитки.
+          max={100}
+        />
+
+        <MetricTile
+          label={t.overview.memory}
+          value={
+            last === null || missing.includes("memory") ? null : f.percent(memPercent)
+          }
+          note={
+            last === null
+              ? undefined
+              : f.bytes(last.memUsed) + " / " + f.bytes(last.memTotal)
+          }
+          points={history.memPercent}
+          max={100}
+        />
+
+        <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
+          <div className="text-[10px] uppercase tracking-[0.08em] text-fg-muted">
+            {t.overview.disk}
+          </div>
+          {/* У диска истории нет: это уровень, а не поток. Полоса заполнения
+              честнее спарклайна, который за пять минут нарисовал бы прямую. */}
+          <div className="mt-1.5 flex items-baseline gap-2">
+            <span
+              className={
+                "num text-[26px] font-semibold leading-none " +
+                (disk === undefined ? "text-fg-faint" : "text-foreground")
+              }
+            >
+              {disk === undefined ? "-" : f.percent(percent(disk.used, disk.size))}
+            </span>
+            {disk !== undefined && (
+              <span className="num text-xs text-fg-muted">
+                {f.bytes(disk.used)} / {f.bytes(disk.size)}
+              </span>
+            )}
+          </div>
+          <div className="mt-3 h-10 flex flex-col justify-center">
+            {disk !== undefined && <Meter percent={percent(disk.used, disk.size)} />}
+            {disk !== undefined && (
+              <div className="num mt-2 truncate text-xs text-fg-muted">{disk.mount}</div>
+            )}
+          </div>
+        </div>
+
+        <MetricTile
+          label={t.overview.network}
+          value={last === null || missing.includes("net") ? null : f.rate(last.rxPerSec)}
+          note={last === null ? undefined : "TX " + f.rate(last.txPerSec)}
+          points={history.rx}
+          // У трафика естественного потолка нет, ось плавающая по окну.
+          max={null}
+        />
+      </div>
+
+      <Card
+        title={t.projects.title}
+        actions={
+          <>
+            {hiddenCount > 0 && (
+              <span className="num text-xs text-fg-muted">
+                {t.fmt(t.projects.hiddenCount, { n: String(hiddenCount) })}
+              </span>
+            )}
+            <Button dense variant="ghost" onClick={() => setShowHidden((v) => !v)}>
+              {showHidden ? t.projects.hideAll : t.projects.showAll}
+            </Button>
+          </>
+        }
+        className="[&>div]:p-0"
+      >
+        <ContentState
+          pending={projects === null}
+          fetching={false}
+          skeleton={<div className="h-24 bg-fill-subtle" />}
+        >
+          {error !== null && <p className="px-5 py-3 text-sm text-down">{error}</p>}
+          {shown.length === 0 ? (
+            <p className="px-5 py-6 text-sm text-fg-muted">{t.projects.empty}</p>
+          ) : (
+            <ul>
+              {shown.map((p) => (
+                <ProjectRow
+                  key={p.kind + ":" + p.id}
+                  serverId={serverId}
+                  project={p}
+                  onChanged={() => void reload()}
+                />
+              ))}
+            </ul>
+          )}
+        </ContentState>
+      </Card>
+    </div>
+  );
+}
