@@ -9,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/crypto/ssh"
 
+	"github.com/zxczxczxczxczxczxc1111/veloce/internal/diag"
 	"github.com/zxczxczxczxczxczxc1111/veloce/internal/store"
 	"github.com/zxczxczxczxczxczxc1111/veloce/internal/transport"
 )
@@ -78,6 +79,7 @@ func (s *ServersService) Connect(id string) error {
 		return fmt.Errorf("сервер %s не найден", id)
 	}
 
+	diag.Logf("Connect: сервер=%s хост=%s@%s", id, srv.User, srv.Host)
 	s.app.Event.Emit("conn:state", ConnStateEvent{ServerID: id, State: "connecting"})
 
 	cfg, err := s.configFor(srv)
@@ -129,6 +131,7 @@ func (s *ServersService) Connect(id string) error {
 	})
 
 	s.conns.Set(id, conn)
+	diag.Logf("Connect: подключились, сервер=%s", id)
 	s.app.Event.Emit("conn:state", ConnStateEvent{ServerID: id, State: "connected"})
 	return nil
 }
@@ -216,9 +219,12 @@ func (s *ServersService) TrustHost(id, fingerprint string) error {
 func (s *ServersService) State(id string) string {
 	conn, err := s.conns.Get(id)
 	if err != nil {
+		diag.Logf("State: сервер=%s соединения нет", id)
 		return "disconnected"
 	}
-	return stateName(conn.State())
+	name := stateName(conn.State())
+	diag.Logf("State: сервер=%s состояние=%s", id, name)
+	return name
 }
 
 // Fingerprints отдаёт сохранённые отпечатки хоста, по одному на алгоритм

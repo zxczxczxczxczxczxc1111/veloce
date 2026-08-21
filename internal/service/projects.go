@@ -9,6 +9,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/zxczxczxczxczxczxc1111/veloce/internal/collect"
+	"github.com/zxczxczxczxczxczxc1111/veloce/internal/diag"
 	"github.com/zxczxczxczxczxczxc1111/veloce/internal/store"
 )
 
@@ -28,10 +29,10 @@ type ProjectDTO struct {
 	// CPUKnown и MemKnown отличают ноль от «не знаем». Без них интерфейс
 	// вынужден догадываться по значению, и честный 0.00% у простаивающего
 	// контейнера превращается в прочерк.
-	CPUKnown bool `json:"cpuKnown"`
-	MemKnown bool `json:"memKnown"`
-	Hidden     bool    `json:"hidden"`
-	Health     string  `json:"health"`
+	CPUKnown bool   `json:"cpuKnown"`
+	MemKnown bool   `json:"memKnown"`
+	Hidden   bool   `json:"hidden"`
+	Health   string `json:"health"`
 }
 
 type ProjectsTick struct {
@@ -101,8 +102,10 @@ func (p *ProjectsService) SaveOverride(o store.ProjectOverride) error {
 // не укладывается. Без этого тикера константа projectsTick была бы объявлена и
 // не использована, а спека раздела 7 требует именно отдельного такта.
 func (p *ProjectsService) Start(serverID string) error {
+	diag.Logf("ProjectsService.Start: сервер=%s", serverID)
 	p.Stop(serverID)
 	if _, err := p.conns.Get(serverID); err != nil {
+		diag.Logf("ProjectsService.Start: ОТКАЗ, сервер=%s: %v", serverID, err)
 		return err
 	}
 
@@ -112,6 +115,7 @@ func (p *ProjectsService) Start(serverID string) error {
 	p.mu.Unlock()
 
 	go func() {
+		ticks := 0
 		t := time.NewTicker(projectsTick)
 		defer t.Stop()
 		for {
@@ -121,6 +125,7 @@ func (p *ProjectsService) Start(serverID string) error {
 			case <-t.C:
 				list, err := p.Discover(serverID)
 				if err != nil {
+					diag.Logf("projects: такт не удался, сервер=%s: %v", serverID, err)
 					// Молчать нельзя по той же причине, что и в метриках:
 					// застывший список выглядит живым.
 					p.mu.Lock()
@@ -142,6 +147,11 @@ func (p *ProjectsService) Start(serverID string) error {
 						ServerID: serverID, State: "connected",
 					})
 				}
+				ticks++
+				if ticks <= 3 || ticks%12 == 0 {
+					diag.Logf("projects:tick #%d сервер=%s проектов=%d",
+						ticks, serverID, len(list))
+				}
 				p.app.Event.Emit("projects:tick", ProjectsTick{
 					ServerID: serverID, Projects: list,
 				})
@@ -152,6 +162,7 @@ func (p *ProjectsService) Start(serverID string) error {
 }
 
 func (p *ProjectsService) Stop(serverID string) {
+	diag.Logf("ProjectsService.Stop: сервер=%s", serverID)
 	p.mu.Lock()
 	cancel, ok := p.stop[serverID]
 	delete(p.stop, serverID)

@@ -2,6 +2,7 @@ import { Events } from "@wailsio/runtime";
 import { useEffect, useState } from "react";
 import type { ProjectDTO } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 import type { ProjectsTick } from "./events";
+import { diag } from "./diag";
 
 // useProjectTick держит свежий снимок ОДНОГО проекта по общему такту.
 //
@@ -40,9 +41,19 @@ function incidentKey(serverId: string, kind: string, id: string): string {
 // Вешается один раз в оболочке.
 export function useIncidentRecorder(serverId: string | null): void {
   useEffect(() => {
+    diag(`useIncidentRecorder: слушаем сервер ${serverId ?? "нет"}`);
     if (serverId === null) return;
+    let got = 0;
     const off = Events.On("projects:tick", (e: { data: ProjectsTick }) => {
-      if (e.data.serverId !== serverId) return;
+      if (e.data.serverId !== serverId) {
+        diag(`projects:tick чужой сервер: ${e.data.serverId}`);
+        return;
+      }
+      got += 1;
+      const down = (e.data.projects ?? []).filter((p) => p.state === "down").length;
+      if (got <= 3 || got % 12 === 0) {
+        diag(`projects:tick получен #${got} проектов=${(e.data.projects ?? []).length} лежат=${down}`);
+      }
       const now = Date.now();
       for (const p of e.data.projects ?? []) {
         if (p.state === "down") downAt.set(incidentKey(serverId, p.kind, p.id), now);

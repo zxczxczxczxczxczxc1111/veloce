@@ -1,6 +1,7 @@
 import { Events } from "@wailsio/runtime";
 import { useEffect, useState } from "react";
 import type { MetricsTick } from "./events";
+import { diag } from "./diag";
 
 // Окно 5 минут при такте 2 секунды это 150 точек, больше не храним. Спарклайн
 // шире экрана не станет, а память утечёт за сутки наблюдения.
@@ -41,9 +42,17 @@ export function useMetrics(serverId: string | null): MetricsHistory {
     // серверу значит рисовать график, которого никогда не было.
     setHistory(empty);
 
+    let got = 0;
     const off = Events.On("metrics:tick", (e: { data: MetricsTick }) => {
       const t = e.data;
-      if (t.serverId !== serverId) return;
+      if (t.serverId !== serverId) {
+        diag(`metrics:tick чужой сервер: пришёл ${t.serverId}, ждём ${serverId}`);
+        return;
+      }
+      got += 1;
+      if (got <= 3 || got % 30 === 0) {
+        diag(`metrics:tick получен #${got} валиден=${t.valid}`);
+      }
       // Такт с valid=false игнорируется целиком. Это первый замер, дельту не с
       // чем считать, и любое число здесь было бы враньём.
       if (!t.valid) return;

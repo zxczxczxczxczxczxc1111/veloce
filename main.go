@@ -4,7 +4,10 @@ import (
 	"embed"
 	"log"
 
+	"path/filepath"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/zxczxczxczxczxczxc1111/veloce/internal/diag"
 	"github.com/zxczxczxczxczxczxc1111/veloce/internal/service"
 	"github.com/zxczxczxczxczxczxc1111/veloce/internal/store"
 )
@@ -26,6 +29,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Журнал диагностики рядом с настройками. Пишется всегда: он крошечный,
+	// не содержит ни содержимого логов, ни секретов, а без него разбор
+	// «почему на экране ничего не происходит» превращается в гадание по
+	// скриншотам.
+	if err := diag.Enable(filepath.Dir(path)); err != nil {
+		log.Println("журнал диагностики не открыт:", err)
+	}
+	diag.Logf("=== запуск приложения ===")
+
 	conns := service.NewConnRegistry()
 
 	app := application.New(application.Options{
@@ -43,6 +55,7 @@ func main() {
 	// он один на всё приложение: создай его заново на каждый экран, и «отвечал
 	// 14 минут назад» обнулялось бы при каждом переходе.
 	app.RegisterService(application.NewService(service.NewHealthService(conns)))
+	app.RegisterService(application.NewService(service.NewDiagService()))
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "Veloce",

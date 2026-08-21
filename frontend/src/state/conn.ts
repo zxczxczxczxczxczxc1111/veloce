@@ -1,6 +1,7 @@
 import { Events } from "@wailsio/runtime";
 import { useEffect, useRef, useState } from "react";
 import type { ConnEvent } from "./events";
+import { diag } from "./diag";
 import {
   LogsService,
   MetricsService,
@@ -42,6 +43,7 @@ export function useConnState(serverId: string | null): ConnState {
     void (async () => {
       try {
         const now = await ServersService.State(serverId);
+        diag(`useConnState: спросили состояние сервера ${serverId}: ${now}`);
         // Ответ мог опоздать: событие, пришедшее за это время, свежее.
         setState((prev) =>
           prev.kind === "idle" && now === "connected" ? { kind: "connected" } : prev,
@@ -55,6 +57,7 @@ export function useConnState(serverId: string | null): ConnState {
 
     const off = Events.On("conn:state", (e: { data: ConnEvent }) => {
       if (e.data.serverId !== serverId) return;
+      diag(`conn:state получено: ${e.data.state}`);
       switch (e.data.state) {
         case "connecting":
           setState({ kind: "connecting" });
@@ -133,10 +136,16 @@ export function useServerTickers(serverId: string | null, state: ConnState): voi
   const run = serverId !== null && state.kind !== "idle" && !isFatal(state.kind);
 
   useEffect(() => {
+    diag(`useServerTickers: сервер=${serverId ?? "нет"} такты нужны=${run}`);
     if (serverId === null || !run) return;
-    void MetricsService.Start(serverId);
-    void ProjectsService.Start(serverId);
+    void MetricsService.Start(serverId).catch((e) =>
+      diag(`MetricsService.Start отказ: ${String(e)}`),
+    );
+    void ProjectsService.Start(serverId).catch((e) =>
+      diag(`ProjectsService.Start отказ: ${String(e)}`),
+    );
     return () => {
+      diag(`useServerTickers: гасим такты сервера ${serverId}`);
       void MetricsService.Stop(serverId);
       void ProjectsService.Stop(serverId);
       void LogsService.StopServer(serverId);

@@ -7,6 +7,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/zxczxczxczxczxczxc1111/veloce/internal/collect"
+	"github.com/zxczxczxczxczxczxc1111/veloce/internal/diag"
 )
 
 // Такты разные намеренно: docker stats тратит около секунды даже с --no-stream
@@ -59,10 +60,12 @@ func NewMetricsService(app *application.App, conns *ConnRegistry) *MetricsServic
 }
 
 func (m *MetricsService) Start(serverID string) error {
+	diag.Logf("MetricsService.Start: сервер=%s", serverID)
 	m.Stop(serverID)
 	// Проверяем наличие соединения один раз, чтобы Start честно вернул ошибку
 	// на несуществующем сервере. Внутри такта соединение берётся заново.
 	if _, err := m.conns.Get(serverID); err != nil {
+		diag.Logf("MetricsService.Start: ОТКАЗ, сервер=%s: %v", serverID, err)
 		return err
 	}
 
@@ -72,6 +75,7 @@ func (m *MetricsService) Start(serverID string) error {
 	m.mu.Unlock()
 
 	go func() {
+		ticks := 0
 		hc := collect.NewHostCollector()
 		t := time.NewTicker(hostTick)
 		defer t.Stop()
@@ -98,6 +102,13 @@ func (m *MetricsService) Start(serverID string) error {
 					continue
 				}
 				m.recovered(serverID)
+				ticks++
+				// Первые такты пишем поштучно, дальше редко: важно увидеть,
+				// что такт вообще пошёл, а не залить журнал.
+				if ticks <= 3 || ticks%30 == 0 {
+					diag.Logf("metrics:tick #%d сервер=%s валиден=%v cpu=%.1f",
+						ticks, serverID, snap.Valid, snap.CPUPercent)
+				}
 				m.app.Event.Emit("metrics:tick", toTick(serverID, snap))
 			}
 		}
@@ -108,6 +119,7 @@ func (m *MetricsService) Start(serverID string) error {
 // fail сообщает интерфейсу, что такт не удался. Интерфейс на это приглушает
 // шапку и подписывает время последнего успешного замера.
 func (m *MetricsService) fail(serverID string, err error) {
+	diag.Logf("metrics: такт не удался, сервер=%s: %v", serverID, err)
 	m.mu.Lock()
 	m.failed[serverID] = true
 	m.mu.Unlock()
@@ -132,6 +144,7 @@ func (m *MetricsService) recovered(serverID string) {
 }
 
 func (m *MetricsService) Stop(serverID string) {
+	diag.Logf("MetricsService.Stop: сервер=%s", serverID)
 	m.mu.Lock()
 	cancel, ok := m.stop[serverID]
 	delete(m.stop, serverID)

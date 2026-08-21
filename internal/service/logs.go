@@ -11,6 +11,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/zxczxczxczxczxczxc1111/veloce/internal/collect"
+	"github.com/zxczxczxczxczxczxc1111/veloce/internal/diag"
 )
 
 // Пакет transport здесь НЕ импортируется: соединение приходит через
@@ -138,6 +139,7 @@ func (s *LogsService) Start(serverID, projectID string,
 	s.streams[key] = st
 	s.mu.Unlock()
 
+	diag.Logf("logs: поток открыт, проект=%s, история=%d строк", projectID, tail)
 	s.app.Event.Emit("logs:stream", LogStreamEvent{
 		ServerID: serverID, ProjectID: projectID, State: "started",
 	})
@@ -165,6 +167,7 @@ func (s *LogsService) pump(ctx context.Context, rc io.ReadCloser,
 		if !natural {
 			return
 		}
+		diag.Logf("logs: поток кончился сам, проект=%s", projectID)
 		s.app.Event.Emit("logs:stream", LogStreamEvent{
 			ServerID: serverID, ProjectID: projectID, State: "ended",
 		})
