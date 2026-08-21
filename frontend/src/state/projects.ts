@@ -33,6 +33,11 @@ export function useProjectTick(serverId: string, initial: ProjectDTO): ProjectDT
 // ничего не видит. Экранная память тут бесполезна по определению.
 const downAt = new Map<string, number>();
 
+// Предыдущее состояние каждого проекта. Нужно, чтобы писать в журнал ПЕРЕХОДЫ:
+// счётчик «лежат: 87» между двумя отметками ничего не говорит, а строка
+// «demo-app-test: running -> down» говорит всё.
+const seenState = new Map<string, string>();
+
 function incidentKey(serverId: string, kind: string, id: string): string {
   return serverId + "\x00" + kind + ":" + id;
 }
@@ -56,7 +61,13 @@ export function useIncidentRecorder(serverId: string | null): void {
       }
       const now = Date.now();
       for (const p of e.data.projects ?? []) {
-        if (p.state === "down") downAt.set(incidentKey(serverId, p.kind, p.id), now);
+        const key = incidentKey(serverId, p.kind, p.id);
+        const was = seenState.get(key);
+        if (was !== undefined && was !== p.state) {
+          diag(`переход: ${p.id} ${was} -> ${p.state}`);
+        }
+        seenState.set(key, p.state);
+        if (p.state === "down") downAt.set(key, now);
       }
     });
     return () => {
