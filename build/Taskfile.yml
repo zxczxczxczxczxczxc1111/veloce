@@ -191,17 +191,21 @@ tasks:
       - wails3 generate bindings -f '{{.BUILD_FLAGS}}' -clean=true{{if eq .OBFUSCATED "true"}} -obfuscated{{end}} -ts -i
 
   generate:icons:
-    summary: Generates Windows `.ico` and Mac `.icns` from an image; on macOS, `-iconcomposerinput appicon.icon -macassetdir darwin` also produces `Assets.car` from a `.icon` file (skipped on other platforms).
+    # Только Windows. Ветка macOS убрана вместе с каталогом build/darwin:
+    # генератор писал туда .icns и падал с «cannot find the path specified»,
+    # роняя всю упаковку на ровном месте.
+    summary: Generates the Windows `.ico` from build/appicon.png
     run: once
     dir: build
     sources:
       - "appicon.png"
-      - "appicon.icon"
     generates:
-      - "darwin/icons.icns"
       - "windows/icon.ico"
     cmds:
-      - wails3 generate icons -input appicon.png -macfilename darwin/icons.icns -windowsfilename windows/icon.ico -iconcomposerinput appicon.icon -macassetdir darwin
+      # Генератор пишет .icns ВСЕГДА, отключить его нечем: без -macfilename он
+      # молча лезет в build/darwin/icon.icns и падает, потому что каталога
+      # больше нет. Отводим его в .task, который и так в .gitignore.
+      - wails3 generate icons -input appicon.png -windowsfilename windows/icon.ico -macfilename ../.task/unused-icon.icns
 
   dev:frontend:
     summary: Runs the frontend in development mode

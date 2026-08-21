@@ -1,59 +1,96 @@
-# Welcome to Your New Wails3 Project!
+# Veloce
 
-Congratulations on generating your Wails3 application! This README will guide you through the next steps to get your project up and running.
+Десктопная панель для Linux-серверов. Подключается по SSH, показывает нагрузку,
+состояние проектов, живые логи и ленту событий безопасности, перезапускает
+проекты.
 
-## Getting Started
+**На управляемый сервер не устанавливается ничего.** Ни агента, ни демона, ни
+открытого порта. Всё, что делает панель, она делает теми же командами, которые
+вы набрали бы руками в SSH-сессии.
 
-1. Navigate to your project directory in the terminal.
+Только Windows. Docker и systemd равноправны.
 
-2. To run your application in development mode, use the following command:
+## Что показывает
 
-   ```
-   wails3 dev
-   ```
+- **Обзор сервера.** Процессор, память, диск, сеть. Возраст данных стоит рядом
+  всегда, а не только при отказе: увидеть, что цифры перестали двигаться,
+  надо раньше, чем это заметит транспорт.
+- **Проекты.** Контейнеры Docker и юниты systemd одним списком, проблемные
+  наверх. Пять состояний, и каждое подписано словом, а не только цветом.
+- **Логи.** Живой поток с фильтром и паузой, автопрокрутка отключается, как
+  только вы ушли вверх читать.
+- **События.** Баны fail2ban и всплески ошибок nginx. Событием считается
+  прирост, а не абсолютное число: «всего отказов 7556» это факт за всё время
+  жизни сервера, а не происшествие.
+- **Health-check.** Отдельно от статуса контейнера, потому что «процесс
+  запущен» и «приложение работает» это разные утверждения.
 
-   This will start your application and enable hot-reloading for both frontend and backend changes.
+## Модель безопасности
 
-3. To build your application for production, use:
+Честно и по пунктам, потому что инструмент просят пустить на прод.
 
-   ```
-   wails3 build
-   ```
+**Что читает с сервера.** `/proc` и `/sys` для нагрузки, `docker ps` и
+`docker stats` для контейнеров, `systemctl` для юнитов, `docker logs` и
+`journalctl` для логов, `fail2ban-client status` и хвост журнала доступа nginx
+для ленты событий.
 
-   This will create a production-ready executable in the `build` directory.
+**Что запускает.** Только перезапуск проекта, только по нажатию человека и
+только после подтверждения с именем проекта в заголовке. Список разрешённых
+действий закрытый и лежит в коде: произвольную команду панель выполнить не
+умеет.
 
-## Exploring Wails3 Features
+**Что хранит локально.** Список серверов, путь к файлу ключа, теги, настройки
+проектов и ленту событий. Всё это лежит в `%APPDATA%\Veloce\`. Там же
+`veloce.log` - журнал диагностики самой панели, без содержимого ваших логов и
+без секретов.
 
-Now that you have your project set up, it's time to explore the features that Wails3 offers:
+**Что не хранит никогда.** Приватные ключи и парольные фразы. Поля для пароля
+в интерфейсе нет вовсе: аутентификация только по ключу, через агент OpenSSH
+или указанием пути к файлу.
 
-1. **Check out the examples**: The best way to learn is by example. Visit the `examples` directory in the `v3/examples` directory to see various sample applications.
+**Ключ хоста.** Проверяется через `known_hosts`. Неизвестный хост показывает
+отпечаток и ждёт вашего решения. Сменившийся ключ кнопки «доверять» не
+получает вообще: чтобы принять новый, нужно осознанно забыть старый, потому
+что разницу между пересборкой сервера и подменой видит только человек.
 
-2. **Run an example**: To run any of the examples, navigate to the example's directory and use:
+**Телеметрии нет.** Никаких запросов наружу, никакой отправки статистики,
+никаких автообновлений.
 
-   ```
-   go run .
-   ```
+## Установка
 
-   Note: Some examples may be under development during the alpha phase.
+Скачайте `veloce-amd64-installer.exe` из релиза и запустите.
 
-3. **Explore the documentation**: Visit the [Wails3 documentation](https://v3.wails.io/) for in-depth guides and API references.
+Установщик не подписан, поэтому SmartScreen покажет предупреждение. Это
+ожидаемо: подпись стоит денег и репутации, которой у свежего бинарника нет.
+Снимается меткой «файл скачан из интернета»:
 
-4. **Join the community**: Have questions or want to share your progress? Join the [Wails Discord](https://discord.gg/JDdSxwjhGf) or visit the [Wails discussions on GitHub](https://github.com/wailsapp/wails/discussions).
+```powershell
+Unblock-File .\veloce-amd64-installer.exe
+```
 
-## Project Structure
+Либо «Подробнее» и «Выполнить в любом случае» в самом окне SmartScreen.
 
-Take a moment to familiarize yourself with your project structure:
+## Сборка из исходников
 
-- `frontend/`: Contains your frontend code (HTML, CSS, JavaScript/TypeScript)
-- `main.go`: The entry point of your Go backend
-- `app.go`: Define your application structure and methods here
-- `wails.json`: Configuration file for your Wails project
+Нужны Go 1.25+, Node 22+, [Wails 3](https://v3.wails.io) и NSIS для
+установщика.
 
-## Next Steps
+```powershell
+wails3 build      # bin\veloce.exe
+wails3 package    # bin\veloce-amd64-installer.exe
+```
 
-1. Modify the frontend in the `frontend/` directory to create your desired UI.
-2. Add backend functionality in `main.go`.
-3. Use `wails3 dev` to see your changes in real-time.
-4. When ready, build your application with `wails3 build`.
+Проверки:
 
-Happy coding with Wails3! If you encounter any issues or have questions, don't hesitate to consult the documentation or reach out to the Wails community.
+```powershell
+go test ./... -count=1
+go vet ./...
+npm test --prefix frontend
+npx --prefix frontend tsc --noEmit -p frontend
+```
+
+## Чего в этой версии нет
+
+Файлового менеджера, деплоя, встроенного терминала и алертов. Деплой вырезан
+осознанно: реальный выкат обвешан воротами и дампами, и сводить его к одной
+кнопке опасно.
