@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+/* static обязателен. Без него Tailwind v4 выкидывает из вывода переменные, на
+   которые не ссылается ни одна утилита, и токен, который читает только обычный
+   CSS ниже, молча исчезает. Так кольцо фокуса получало currentColor вместо
+   --color-focus: outline рисовался, но цветом текста кнопки. */
+@theme static {
+  /* Поверхности. Чистый чёрный, а не «почти чёрный»: на OLED пиксель с
+     #000000 выключен физически. */
+  --color-background: #000000;
+  --color-surface: #0a0a0b;
+  --color-rail: #080809;
+  --color-elevated: #0f0f10;
+  --color-surface-hover: #111113;
+  --color-surface-active: #1a1a1e;
+
+  /* Текст. Порог контраста 4.5:1 достигается с непрозрачности 0.46, поэтому
+     0.35 только для выключенного и декора. Верхняя ступень намеренно не чистый
+     белый: на почти чёрном экране он бьёт по глазам. */
+  --color-foreground: rgb(255 255 255 / 0.92);
+  --color-fg-secondary: rgb(255 255 255 / 0.60);
+  --color-fg-muted: rgb(255 255 255 / 0.46);
+  --color-fg-faint: rgb(255 255 255 / 0.35);
+
+  /* Акцент. В admpanel он белый, здесь янтарный: это единственное отличие от
+     исходной системы. */
+  --color-accent: #f5a524;
+  --color-accent-hover: #d98d14;
+  --color-accent-fg: #1a1206;
+
+  /* Статусы. Бюджет цвета на весь экран ровно три вместе с акцентом:
+     янтарный, зелёный, красный. Четвёртого нет, неизвестное состояние
+     выражается приглушённым серым из лестницы текста. */
+  --color-up: #34d399;
+  --color-down: #f87171;
+
+  --color-border: rgb(255 255 255 / 0.06);
+  --color-border-hover: rgb(255 255 255 / 0.12);
+  --color-border-active: rgb(255 255 255 / 0.20);
+
+  --color-fill-subtle: rgb(255 255 255 / 0.03);
+  --color-fill: rgb(255 255 255 / 0.06);
+  --color-fill-hover: rgb(255 255 255 / 0.10);
+
+  --color-focus: rgb(255 255 255 / 0.90);
+
+  /* Движение задаётся здесь и только здесь. Любая утилита transition-* без
+     явных duration и ease берёт эти значения. */
+  --default-transition-duration: 120ms;
+  --default-transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-panel: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+
+  --shadow-card:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.04), 0 1px 2px 0 rgb(0 0 0 / 0.4),
+    0 8px 24px -12px rgb(0 0 0 / 0.6);
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* Фокус с клавиатуры описан ОДНИМ правилом на весь проект, а не классом на
+   каждом элементе: пропущенный элемент не виден ни глазами, ни тестом.
+   outline, а не ring со смещением: кольцо со смещением обязано знать цвет фона
+   под собой, и при переносе кнопки на другую поверхность даёт ободок чужого
+   цвета. */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Появление контента: 220 мс, подъём на 10px. Числа из спеки раздела 9.1,
+   менять их поштучно в компонентах нельзя. */
+@keyframes content-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Моноширинные цифры НА ВСЕХ числах, а не только в таблицах. В admpanel
+   правило висит на table, здесь шире: числа обновляются каждые две секунды, и
+   пропорциональные цифры дёргают колонку на каждом такте, потому что «11» уже,
+   чем «00». */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Скроллбары. Умолчание Windows на чёрном фоне выглядит как заплатка из
+   другого приложения. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-fill);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-fill-hover);
+  background-clip: content-box;
+}

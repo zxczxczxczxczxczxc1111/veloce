@@ -1,9 +1,13 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App'
+import './styles/tokens.css'
+import { LangProvider } from './i18n/LangProvider'
+import { Shell } from './components/layout/Shell'
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <LangProvider>
+      <Shell />
+    </LangProvider>
   </React.StrictMode>,
 )
