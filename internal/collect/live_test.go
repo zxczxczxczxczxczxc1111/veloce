@@ -71,6 +71,34 @@ func TestLiveCollectReadOnly(t *testing.T) {
 		counts[StateRunning], counts[StateDone], counts[StateWaiting],
 		counts[StateStarting], counts[StateDown])
 
+	// Два такта сборщика, как в приложении: загрузка у юнитов считается по
+	// дельте и на первом такте неизвестна честно.
+	sc := NewStatsCollector()
+	if _, err := sc.Collect(ctx, "live", conn, projects); err != nil {
+		t.Fatalf("первый сбор статистики: %v", err)
+	}
+	time.Sleep(2 * time.Second)
+	withStats, err := sc.Collect(ctx, "live", conn, projects)
+	if err != nil {
+		t.Fatalf("второй сбор статистики: %v", err)
+	}
+	unknownCPU, unknownMem := 0, 0
+	for _, p := range withStats {
+		if !p.CPUKnown {
+			unknownCPU++
+		}
+		if !p.MemKnown {
+			unknownMem++
+		}
+		if p.Kind != KindDocker {
+			continue
+		}
+		t.Logf("  контейнер %s: cpu=%.2f%% (известно=%v) mem=%d (известно=%v)",
+			p.ID, p.CPUPercent, p.CPUKnown, p.MemBytes, p.MemKnown)
+	}
+	t.Logf("без цифр: загрузка у %d проектов, память у %d (из %d)",
+		unknownCPU, unknownMem, len(withStats))
+
 	// Печатаем всё, что НЕ работает: именно там и живут ложные тревоги.
 	shown := 0
 	for _, p := range projects {

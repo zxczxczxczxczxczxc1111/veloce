@@ -29,6 +29,12 @@ type Project struct {
 	Status     string // человеческая строка от docker или systemd
 	CPUPercent float64
 	MemBytes   uint64
+	// CPUKnown и MemKnown отличают ЗНАЧЕНИЕ от ОТСУТСТВИЯ значения.
+	// Простаивающий контейнер честно потребляет 0.00%, и прочерк вместо нуля
+	// говорит «не знаю» там, где мы знаем. У systemd загрузка к тому же
+	// неизвестна до второго замера: дельту не с чем считать.
+	CPUKnown bool
+	MemKnown bool
 	// FromPackage=true у юнитов из /lib и /usr/lib: по умолчанию скрыты.
 	FromPackage bool
 }
@@ -246,14 +252,16 @@ func (s *StatsCollector) Collect(ctx context.Context, serverID string,
 		case KindDocker:
 			if st, ok := byName[p.ID]; ok {
 				p.CPUPercent, p.MemBytes = st.CPUPercent, st.MemBytes
+				p.CPUKnown, p.MemKnown = true, true
 			}
 		case KindSystemd:
 			if u, ok := cg[p.ID]; ok {
-				p.MemBytes = u.mem
+				p.MemBytes, p.MemKnown = u.mem, true
 				k := cgKey(serverID, p.ID)
 				if elapsed > 0 {
 					if prev, seen := s.prevCgroup[k]; seen {
 						p.CPUPercent = CgroupCPUPercent(prev, u.usageUsec, elapsed)
+						p.CPUKnown = true
 					}
 				}
 				s.prevCgroup[k] = u.usageUsec

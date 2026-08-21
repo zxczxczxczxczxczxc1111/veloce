@@ -43,11 +43,14 @@ export function ProjectRow({ serverId, project, onChanged, onOpen }: Props) {
 
         {/* Потребление в колонках: моноширинные цифры не дают строкам скакать
             на каждом такте. */}
+        {/* Прочерк ставится по флагу «значения нет», а не по нулю: у
+            простаивающего контейнера 0.00% это честный ответ, и подменять его
+            прочерком значит говорить «не знаю» там, где мы знаем. */}
         <span className="num w-24 shrink-0 text-right text-sm text-fg-secondary">
-          {project.cpuPercent > 0 ? f.percent(project.cpuPercent) : "-"}
+          {project.cpuKnown ? f.percent(project.cpuPercent) : "-"}
         </span>
         <span className="num w-24 shrink-0 text-right text-sm text-fg-secondary">
-          {project.memBytes > 0 ? f.bytes(project.memBytes) : "-"}
+          {project.memKnown ? f.bytes(project.memBytes) : "-"}
         </span>
 
         <span className="flex shrink-0 items-center gap-2">

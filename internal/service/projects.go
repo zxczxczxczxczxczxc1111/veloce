@@ -25,6 +25,11 @@ type ProjectDTO struct {
 	Status     string  `json:"status"`
 	CPUPercent float64 `json:"cpuPercent"`
 	MemBytes   uint64  `json:"memBytes"`
+	// CPUKnown и MemKnown отличают ноль от «не знаем». Без них интерфейс
+	// вынужден догадываться по значению, и честный 0.00% у простаивающего
+	// контейнера превращается в прочерк.
+	CPUKnown bool `json:"cpuKnown"`
+	MemKnown bool `json:"memKnown"`
 	Hidden     bool    `json:"hidden"`
 	Health     string  `json:"health"`
 }
@@ -148,6 +153,7 @@ func applyOverrides(projects []collect.Project,
 		dto := ProjectDTO{
 			Kind: string(p.Kind), ID: p.ID, Name: p.Name,
 			State: string(p.State), Trigger: p.Trigger, Status: p.Status,
+			CPUKnown: p.CPUKnown, MemKnown: p.MemKnown,
 			CPUPercent: p.CPUPercent, MemBytes: p.MemBytes,
 			// Юниты из пакетов скрыты по умолчанию, но явная настройка
 			// сильнее умолчания в обе стороны.

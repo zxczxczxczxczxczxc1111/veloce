@@ -1,6 +1,12 @@
 package collect
 
-import "testing"
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/zxczxczxczxczxczxc1111/veloce/internal/transport"
+)
 
 func TestUnitStateFromSystemdProperties(t *testing.T) {
 	cases := []struct {
@@ -80,5 +86,78 @@ func TestRunningOnlyForActuallyRunning(t *testing.T) {
 		if s.HasProcess() {
 			t.Fatalf("%q не имеет процесса, а считается живым", s)
 		}
+	}
+}
+
+func TestKnownFlagsSeparateZeroFromNoData(t *testing.T) {
+	// Ноль это ЗНАЧЕНИЕ: простаивающий контейнер честно потребляет 0.00%.
+	// Прочерк это ОТСУТСТВИЕ значения. Показав прочерк вместо нуля, панель
+	// говорит «не знаю» там, где знает, и человек идёт искать несуществующую
+	// поломку.
+	projects := []Project{
+		{Kind: KindDocker, ID: "idle", State: StateRunning},
+		{Kind: KindDocker, ID: "gone", State: StateDown},
+	}
+	c := &scriptedConn{replies: map[string]transport.Result{
+		"docker stats": {Stdout: `{"Name":"idle","CPUPerc":"0.00%","MemUsage":"162.2MiB / 3.8GiB"}` + "\n"},
+		// Юнитов нет, значит cgroup-скрипт не вызывается вовсе.
+		"cgroup.controllers": {Code: 127},
+	}}
+
+	got, err := NewStatsCollector().Collect(context.Background(), "srv1", c, projects)
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	byID := map[string]Project{}
+	for _, p := range got {
+		byID[p.ID] = p
+	}
+
+	idle := byID["idle"]
+	if !idle.CPUKnown || !idle.MemKnown {
+		t.Fatalf("статистика простаивающего контейнера потеряна: %+v", idle)
+	}
+	if idle.CPUPercent != 0 {
+		t.Fatalf("загрузка %v, ожидался честный ноль", idle.CPUPercent)
+	}
+
+	gone := byID["gone"]
+	if gone.CPUKnown || gone.MemKnown {
+		t.Fatalf("у контейнера без строки в docker stats цифры взялись из ниоткуда: %+v", gone)
+	}
+}
+
+func TestSystemdCPUUnknownUntilSecondSample(t *testing.T) {
+	projects := []Project{{Kind: KindSystemd, ID: "bot.service", State: StateRunning}}
+	c := &scriptedConn{replies: map[string]transport.Result{
+		"docker stats":       {Code: 127},
+		"cgroup.controllers": {Stdout: "UNIT bot.service\nCPU 1000000\nMEM 536870912\n"},
+	}}
+
+	s := NewStatsCollector()
+	first, err := s.Collect(context.Background(), "srv1", c, projects)
+	if err != nil {
+		t.Fatalf("первый Collect: %v", err)
+	}
+	// Память известна сразу, а загрузку не с чем сравнивать: дельты ещё нет.
+	// Ноль здесь был бы враньём, поэтому именно «не знаю».
+	if !first[0].MemKnown {
+		t.Fatal("память с первого замера обязана быть известна")
+	}
+	if first[0].CPUKnown {
+		t.Fatal("на первом замере загрузка не может быть известна")
+	}
+
+	c.replies["cgroup.controllers"] = transport.Result{
+		Stdout: "UNIT bot.service\nCPU 2000000\nMEM 536870912\n",
+	}
+	s.prevAt["srv1"] = time.Now().Add(-2 * time.Second)
+
+	second, err := s.Collect(context.Background(), "srv1", c, projects)
+	if err != nil {
+		t.Fatalf("второй Collect: %v", err)
+	}
+	if !second[0].CPUKnown {
+		t.Fatal("на втором замере загрузка обязана быть известна")
 	}
 }

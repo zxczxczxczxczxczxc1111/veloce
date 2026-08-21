@@ -85,20 +85,26 @@ export function Project({ serverId, project, onBack, onFullLogs }: Props) {
         className="[&>div]:p-0"
       >
         <div className="grid grid-cols-3 gap-px bg-border">
+          {/* Ноль это значение, прочерк это отсутствие значения. Решает
+              флаг с той стороны, а не сравнение с нулём. */}
           <Big
             label={t.projects.cpu}
-            value={current.cpuPercent > 0 ? f.percent(current.cpuPercent) : "-"}
+            value={current.cpuKnown ? f.percent(current.cpuPercent) : "-"}
           />
           <Big
             label={t.projects.memory}
-            value={current.memBytes > 0 ? f.bytes(current.memBytes) : "-"}
+            value={current.memKnown ? f.bytes(current.memBytes) : "-"}
           />
           <Big
             label={t.project.restarts}
             // -1 значит «у контейнеров такого счётчика нет», а не ноль.
             // Ноль здесь читался бы как «ни разу не падал», это разные вещи.
             value={restarts === null || restarts < 0 ? "-" : String(restarts)}
-            note={t.project.restartsNote}
+            // Подпись только там, где есть число. Под прочерком «с последнего
+            // запуска» читается как пояснение к пустоте.
+            note={
+              restarts !== null && restarts >= 0 ? t.project.restartsNote : undefined
+            }
           />
         </div>
 
