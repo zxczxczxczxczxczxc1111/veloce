@@ -63,6 +63,13 @@ ManifestDPIAware true
 !insertmacro MUI_PAGE_INSTFILES # Installing page.
 !insertmacro MUI_PAGE_FINISH # Finished installation page.
 
+# Uninstall pages. The stock template had only INSTFILES here, which means
+# launching the uninstaller started deleting immediately, with nothing to
+# confirm and no way back. CONFIRM asks first; COMPONENTS is what carries the
+# "settings and data" checkbox below.
+!define MUI_UNCONFIRMPAGE_TEXT_TOP "Veloce will be removed from this computer. Settings and data are kept unless you tick the box on the next page."
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_COMPONENTS
 !insertmacro MUI_UNPAGE_INSTFILES # Uninstalling page
 
 !insertmacro MUI_LANGUAGE "English" # Set the Language of the installer
@@ -102,7 +109,10 @@ Section
     !insertmacro wails.writeUninstaller
 SectionEnd
 
-Section "uninstall" 
+Section "un.${INFO_PRODUCTNAME}" SEC_UN_APP
+    # Required: the application itself. SectionIn RO makes the checkbox
+    # non-removable, so the components page cannot end up doing nothing.
+    SectionIn RO
     !insertmacro wails.setShellContext
 
     RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
@@ -117,3 +127,17 @@ Section "uninstall"
 
     !insertmacro wails.deleteUninstaller
 SectionEnd
+
+# Optional and OFF by default (/o). Reinstalling must not silently wipe the
+# server list, so the destructive choice is the one the user has to make.
+# This is %APPDATA%\Veloce: servers.json, per-project overrides, the event
+# feed and veloce.log. Private keys were never stored, so there is nothing
+# secret to shred here.
+Section /o "un.Settings and data" SEC_UN_DATA
+    RMDir /r "$APPDATA\${INFO_PRODUCTNAME}"
+SectionEnd
+
+!insertmacro MUI_UNFUNCTION_DESCRIPTION_BEGIN
+    !insertmacro MUI_DESCRIPTION_TEXT ${SEC_UN_APP} "The application and its shortcuts."
+    !insertmacro MUI_DESCRIPTION_TEXT ${SEC_UN_DATA} "Server list, project settings, event feed and diagnostic log in %APPDATA%\${INFO_PRODUCTNAME}. Leave unticked to keep them for a future install."
+!insertmacro MUI_UNFUNCTION_DESCRIPTION_END
