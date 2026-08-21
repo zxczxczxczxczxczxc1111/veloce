@@ -67,8 +67,13 @@ export const en: Dict = {
   projects: {
     title: "Projects",
     running: "Running",
+    done: "Finished",
+    waiting: "Waiting",
+    starting: "Starting",
     stopped: "Down",
     unknown: "Unknown",
+    byTimer: "on timer {name}",
+    bySocket: "on socket {name}",
     restart: "Restart",
     confirmRestart: "Restart {name}?",
     showAll: "Show system units",

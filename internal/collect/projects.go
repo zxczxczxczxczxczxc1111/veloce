@@ -18,10 +18,14 @@ const (
 )
 
 type Project struct {
-	Kind       ProjectKind
-	ID         string // имя контейнера или юнита
-	Name       string // отображаемое имя, по умолчанию равно ID
-	Running    bool
+	Kind  ProjectKind
+	ID    string       // имя контейнера или юнита
+	Name  string       // отображаемое имя, по умолчанию равно ID
+	State ProjectState // пять состояний, см. state.go
+	// Trigger - чем юнит поднимается, когда придёт время: таймер или сокет.
+	// Пусто у всех остальных. Без него подпись «ждёт» превращается в загадку:
+	// человек видит простой и не понимает, простой чего именно.
+	Trigger    string
 	Status     string // человеческая строка от docker или systemd
 	CPUPercent float64
 	MemBytes   uint64
@@ -48,7 +52,7 @@ func Discover(ctx context.Context, c transport.Conn) ([]Project, error) {
 		for _, ct := range cs {
 			res = append(res, Project{
 				Kind: KindDocker, ID: ct.Name, Name: ct.Name,
-				Running: ct.State == "running", Status: ct.Status,
+				State: ContainerState(ct.State, ct.Status), Status: ct.Status,
 			})
 		}
 	}
@@ -63,15 +67,23 @@ func Discover(ctx context.Context, c transport.Conn) ([]Project, error) {
 		if err != nil {
 			return nil, err
 		}
-		paths, err := fragmentPaths(ctx, c, us)
+		props, err := unitProperties(ctx, c, us)
 		if err != nil {
 			return nil, err
 		}
 		for _, u := range us {
+			pr := props[u.Name]
+			// Свойства из systemctl show точнее, чем колонки list-units:
+			// колонок там всего две, а отличить отработавшего от упавшего без
+			// Result невозможно в принципе.
+			active, sub := valueOr(pr["ActiveState"], u.Active), valueOr(pr["SubState"], u.Sub)
+			trigger := firstField(pr["TriggeredBy"])
 			res = append(res, Project{
 				Kind: KindSystemd, ID: u.Name, Name: u.Name,
-				Running: u.Sub == "running", Status: u.Active + " / " + u.Sub,
-				FromPackage: !IsUserUnit(paths[u.Name]),
+				State:       UnitState(active, sub, pr["Result"], trigger),
+				Trigger:     trigger,
+				Status:      active + " / " + sub,
+				FromPackage: !IsUserUnit(pr["FragmentPath"]),
 			})
 		}
 	}
@@ -79,11 +91,12 @@ func Discover(ctx context.Context, c transport.Conn) ([]Project, error) {
 	return res, nil
 }
 
-// fragmentPaths спрашивает пути одним вызовом на все юниты, а не по вызову на
-// каждый: на сотне юнитов сто SSH-сессий это несколько секунд на пустом месте.
-func fragmentPaths(ctx context.Context, c transport.Conn, us []Unit) (map[string]string, error) {
+// unitProperties спрашивает свойства одним вызовом на все юниты, а не по
+// вызову на каждый: на сотне юнитов сто SSH-сессий это несколько секунд на
+// пустом месте. Свойств пять, но команда по-прежнему одна.
+func unitProperties(ctx context.Context, c transport.Conn, us []Unit) (map[string]map[string]string, error) {
 	if len(us) == 0 {
-		return map[string]string{}, nil
+		return map[string]map[string]string{}, nil
 	}
 	names := make([]string, 0, len(us))
 	for _, u := range us {
@@ -92,7 +105,8 @@ func fragmentPaths(ctx context.Context, c transport.Conn, us []Unit) (map[string
 		names = append(names, shellQuoteArg(u.Name))
 	}
 	cmd := "systemctl show " + strings.Join(names, " ") +
-		" --property=Id --property=FragmentPath"
+		" --property=Id --property=FragmentPath --property=ActiveState" +
+		" --property=SubState --property=Result --property=TriggeredBy"
 	res, err := c.Run(ctx, cmd)
 	if err != nil {
 		return nil, err
@@ -111,13 +125,13 @@ func fragmentPaths(ctx context.Context, c transport.Conn, us []Unit) (map[string
 //
 // Поэтому границу блока определяем по повтору ключа: встретили Id второй раз
 // значит начался следующий юнит. Порядок ключей внутри блока при этом не важен.
-func splitShowBlocks(out string) map[string]string {
-	res := map[string]string{}
+func splitShowBlocks(out string) map[string]map[string]string {
+	res := map[string]map[string]string{}
 	cur := map[string]string{}
 
 	flush := func() {
 		if id := cur["Id"]; id != "" {
-			res[id] = cur["FragmentPath"]
+			res[id] = cur
 		}
 		cur = map[string]string{}
 	}
@@ -265,7 +279,9 @@ func (s *StatsCollector) unitStats(ctx context.Context, c transport.Conn,
 
 	var names []string
 	for _, p := range projects {
-		if p.Kind == KindSystemd && p.Running {
+		// Спрашиваем cgroup только у тех, за кем есть живой процесс.
+		// У отработавшего и ждущего там пусто, а команда была бы потрачена.
+		if p.Kind == KindSystemd && p.State.HasProcess() {
 			names = append(names, p.ID)
 		}
 	}
@@ -323,4 +339,25 @@ done`
 		}
 	}
 	return out, nil
+}
+
+// valueOr подставляет запасное значение, когда systemctl show не отдал
+// свойство: на старых версиях и у экзотических юнитов часть полей пуста, а
+// колонки list-units есть всегда.
+func valueOr(v, fallback string) string {
+	if v == "" {
+		return fallback
+	}
+	return v
+}
+
+// firstField берёт первый триггер из списка. TriggeredBy может перечислять и
+// таймер, и сокет сразу; для подписи хватает одного, а показывать всё значит
+// растянуть строку на пол-экрана.
+func firstField(v string) string {
+	f := strings.Fields(v)
+	if len(f) == 0 {
+		return ""
+	}
+	return f[0]
 }

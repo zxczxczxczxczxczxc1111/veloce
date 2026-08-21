@@ -45,12 +45,12 @@ export function ProjectRow({ serverId, project, onChanged }: Props) {
   return (
     <li className="border-b border-border last:border-b-0">
       <div className="flex items-center gap-4 px-5 py-2.5">
-        <StatusDot running={project.running} status={project.status} />
+        <StatusDot state={project.state} />
 
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm">{project.name}</span>
           <span className="block truncate text-xs text-fg-muted">
-            {project.kind} · {project.status}
+            {project.kind} · {detail(t, project)}
           </span>
         </span>
 
@@ -181,22 +181,37 @@ function ProjectSettings({
   );
 }
 
+// detail дописывает к строке состояния то, ЧЕГО ждёт юнит. «Ждёт» без ответа
+// на вопрос «чего» это загадка, а не сообщение.
+function detail(t: ReturnType<typeof useT>, p: ProjectDTO): string {
+  if (p.state !== "waiting" || p.trigger === "") return p.status;
+  const tpl = p.trigger.endsWith(".socket") ? t.projects.bySocket : t.projects.byTimer;
+  return t.fmt(tpl, { name: p.trigger });
+}
+
 // Состояние никогда не передаётся ОДНИМ цветом: рядом всегда есть слово.
 // Зелёное и красное неразличимы у части читателей, а точка без подписи в такой
 // панели это единственный носитель самого важного факта.
-function StatusDot({ running, status }: { running: boolean; status: string }) {
+//
+// Зелёный означает «есть живой процесс прямо сейчас», и только это. Юнит,
+// который отработал и завершился, серый: он сделал дело, но не крутится, и
+// зелёный на нём был бы неправдой.
+function StatusDot({ state }: { state: string }) {
   const t = useT();
-  const unknown = status === "";
-  const cls = unknown ? "bg-fg-faint" : running ? "bg-up" : "bg-down";
-  const label = unknown
-    ? t.projects.unknown
-    : running
-      ? t.projects.running
-      : t.projects.stopped;
+  const map: Record<string, { cls: string; label: string }> = {
+    running: { cls: "bg-up", label: t.projects.running },
+    done: { cls: "bg-fg-faint", label: t.projects.done },
+    waiting: { cls: "bg-fg-faint", label: t.projects.waiting },
+    starting: { cls: "bg-accent motion-safe:animate-pulse", label: t.projects.starting },
+    down: { cls: "bg-down", label: t.projects.stopped },
+  };
+  // Незнакомое значение с той стороны не красим ни зелёным, ни красным: оба
+  // были бы утверждением, которого мы не делали.
+  const v = map[state] ?? { cls: "bg-fg-faint", label: t.projects.unknown };
   return (
     <span className="flex shrink-0 items-center gap-2">
-      <span className={"inline-block h-2 w-2 rounded-full " + cls} />
-      <span className="w-20 text-xs text-fg-muted">{label}</span>
+      <span className={"inline-block h-2 w-2 rounded-full " + v.cls} />
+      <span className="w-24 text-xs text-fg-muted">{v.label}</span>
     </span>
   );
 }

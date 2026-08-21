@@ -66,8 +66,13 @@ export const ru = {
   projects: {
     title: "Проекты",
     running: "Работает",
+    done: "Отработал",
+    waiting: "Ждёт",
+    starting: "Запускается",
     stopped: "Лежит",
     unknown: "Неизвестно",
+    byTimer: "по таймеру {name}",
+    bySocket: "по сокету {name}",
     restart: "Перезапустить",
     confirmRestart: "Перезапустить {name}?",
     showAll: "Показать системные",

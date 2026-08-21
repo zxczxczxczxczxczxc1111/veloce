@@ -13,10 +13,15 @@ import (
 )
 
 type ProjectDTO struct {
-	Kind       string  `json:"kind"`
-	ID         string  `json:"id"`
-	Name       string  `json:"name"`
-	Running    bool    `json:"running"`
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// State - одно из пяти значений collect.ProjectState. Булева «работает»
+	// здесь больше нет: она сваливала отработавший oneshot, юнит по таймеру и
+	// настоящий отказ в одну красную кучу.
+	State string `json:"state"`
+	// Trigger - таймер или сокет, которым юнит поднимается. Пусто у остальных.
+	Trigger    string  `json:"trigger"`
 	Status     string  `json:"status"`
 	CPUPercent float64 `json:"cpuPercent"`
 	MemBytes   uint64  `json:"memBytes"`
@@ -126,7 +131,7 @@ func applyOverrides(projects []collect.Project,
 	for _, p := range projects {
 		dto := ProjectDTO{
 			Kind: string(p.Kind), ID: p.ID, Name: p.Name,
-			Running: p.Running, Status: p.Status,
+			State: string(p.State), Trigger: p.Trigger, Status: p.Status,
 			CPUPercent: p.CPUPercent, MemBytes: p.MemBytes,
 			// Юниты из пакетов скрыты по умолчанию, но явная настройка
 			// сильнее умолчания в обе стороны.

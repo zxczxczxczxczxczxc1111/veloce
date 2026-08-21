@@ -62,11 +62,22 @@ func TestLiveCollectReadOnly(t *testing.T) {
 		t.Fatalf("обнаружение проектов: %v", err)
 	}
 	t.Logf("проектов найдено: %d", len(projects))
-	for i, p := range projects {
-		if i >= 8 {
-			t.Logf("...и ещё %d", len(projects)-8)
-			break
+
+	counts := map[ProjectState]int{}
+	for _, p := range projects {
+		counts[p.State]++
+	}
+	t.Logf("по состояниям: работает=%d отработал=%d ждёт=%d запускается=%d лежит=%d",
+		counts[StateRunning], counts[StateDone], counts[StateWaiting],
+		counts[StateStarting], counts[StateDown])
+
+	// Печатаем всё, что НЕ работает: именно там и живут ложные тревоги.
+	shown := 0
+	for _, p := range projects {
+		if p.State == StateRunning || shown >= 14 {
+			continue
 		}
-		t.Logf("  %s %s состояние=%s из-пакета=%v", p.Kind, p.ID, p.Status, p.FromPackage)
+		shown++
+		t.Logf("  [%s] %s %s | %s | триггер=%q", p.State, p.Kind, p.ID, p.Status, p.Trigger)
 	}
 }

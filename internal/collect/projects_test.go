@@ -46,11 +46,11 @@ func TestSplitShowBlocksWithoutBlankLines(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("разобрано %d блоков, ожидалось 2: %+v", len(got), got)
 	}
-	if got["bot.service"] != "/etc/systemd/system/bot.service" {
-		t.Fatalf("bot.service: %q", got["bot.service"])
+	if got["bot.service"]["FragmentPath"] != "/etc/systemd/system/bot.service" {
+		t.Fatalf("bot.service: %q", got["bot.service"]["FragmentPath"])
 	}
-	if got["nginx.service"] != "/lib/systemd/system/nginx.service" {
-		t.Fatalf("nginx.service: %q", got["nginx.service"])
+	if got["nginx.service"]["FragmentPath"] != "/lib/systemd/system/nginx.service" {
+		t.Fatalf("nginx.service: %q", got["nginx.service"]["FragmentPath"])
 	}
 }
 
@@ -90,8 +90,11 @@ func TestDiscoverSplitsUserAndPackageUnits(t *testing.T) {
 	if !byID["nginx.service"].FromPackage {
 		t.Fatal("юнит из /lib не помечен пакетным, он утонет в списке вместе с нужными")
 	}
-	if !byID["demo-app"].Running || byID["demo-worker"].Running {
-		t.Fatalf("состояние контейнеров разобрано неверно: %+v", got)
+	if byID["demo-app"].State != StateRunning {
+		t.Fatalf("работающий контейнер разобран как %q", byID["demo-app"].State)
+	}
+	if byID["demo-worker"].State == StateRunning {
+		t.Fatalf("остановленный контейнер разобран как работающий: %+v", got)
 	}
 }
 
@@ -128,7 +131,7 @@ func TestDiscoverQuotesUnitNames(t *testing.T) {
 }
 
 func TestStatsCollectorNeedsTwoSamples(t *testing.T) {
-	projects := []Project{{Kind: KindSystemd, ID: "bot.service", Running: true}}
+	projects := []Project{{Kind: KindSystemd, ID: "bot.service", State: StateRunning}}
 	c := &scriptedConn{replies: map[string]transport.Result{
 		"docker stats":       {Code: 127},
 		"cgroup.controllers": {Stdout: "UNIT bot.service\nCPU 1000000\nMEM 536870912\n"},
@@ -168,7 +171,7 @@ func TestStatsCollectorNeedsTwoSamples(t *testing.T) {
 func TestStatsCollectorSeparatesServers(t *testing.T) {
 	// Один и тот же юнит на двух серверах: дельта не должна считаться между
 	// замерами разных машин.
-	projects := []Project{{Kind: KindSystemd, ID: "bot.service", Running: true}}
+	projects := []Project{{Kind: KindSystemd, ID: "bot.service", State: StateRunning}}
 	c := &scriptedConn{replies: map[string]transport.Result{
 		"docker stats":       {Code: 127},
 		"cgroup.controllers": {Stdout: "UNIT bot.service\nCPU 5000000\nMEM 100\n"},
