@@ -4,6 +4,8 @@ import type { Server } from "../../../bindings/github.com/zxczxczxczxczxczxc1111
 import { ContentState } from "../ui/ContentState";
 import { Card } from "../ui/Card";
 import { ServerRail } from "./ServerRail";
+import { Servers } from "../../screens/Servers";
+import { useConnState, useServerTickers } from "../../state/conn";
 
 // Переключение экранов это состояние, а не роутер. Экранов четыре, ссылками
 // они не адресуются, а история браузера в десктопном окне только мешает:
@@ -43,12 +45,22 @@ export function Shell() {
 
   const activeId = screen.name === "servers" ? null : screen.serverId;
 
+  // Такты живут здесь, а не в карточке сервера: карточка исчезает при уходе с
+  // экрана подключений, и тикеры остановились бы ровно тогда, когда обзор их
+  // и просит. Уход с сервера гасит такты сам, через размонтирование эффекта.
+  const activeState = useConnState(activeId);
+  useServerTickers(activeId, activeState);
+
+  const openServer = useCallback((id: string) => {
+    setScreen({ name: "overview", serverId: id });
+  }, []);
+
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <ServerRail
         servers={servers ?? []}
         activeId={activeId}
-        onSelect={(id) => setScreen({ name: "overview", serverId: id })}
+        onSelect={openServer}
         onAdd={() => setScreen({ name: "servers" })}
       />
 
@@ -58,14 +70,22 @@ export function Shell() {
           fetching={fetching}
           skeleton={<div className="h-24 rounded-xl bg-fill-subtle" />}
         >
-          {/* Экраны приезжают в фазах 6-8. Каркас нужен раньше них: без него
-              открыть готовый экран будет нечем. */}
-          <Card title={screen.name}>
-            <p className="text-sm text-fg-secondary">{activeId ?? "-"}</p>
-            {error !== null && (
-              <p className="mt-2 text-sm text-down">{error}</p>
-            )}
-          </Card>
+          {error !== null && (
+            <p className="mb-4 text-sm text-down">{error}</p>
+          )}
+
+          {screen.name === "servers" ? (
+            <Servers
+              servers={servers ?? []}
+              onChanged={reload}
+              onOpen={openServer}
+            />
+          ) : (
+            // Экраны обзора, проекта и логов приезжают в фазах 7-8.
+            <Card title={screen.name}>
+              <p className="text-sm text-fg-secondary">{activeId ?? "-"}</p>
+            </Card>
+          )}
         </ContentState>
       </main>
     </div>

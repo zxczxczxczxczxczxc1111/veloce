@@ -17,6 +17,10 @@ const (
 	StateAuthFailed     // ключ не принят, переподключаться бессмысленно
 	StateHostKeyUnknown // хост не в known_hosts, нужно решение пользователя
 	StateJumpFailed     // лёг бастион, а не цель
+	// StateHostKeyChanged - у известного хоста другой ключ. Отдельно от
+	// StateHostKeyUnknown намеренно: там уместно предложить доверие, здесь
+	// человек обязан сравнить два отпечатка.
+	StateHostKeyChanged
 )
 
 // Config описывает одно подключение. JumpVia - бастион; цепочка ограничена

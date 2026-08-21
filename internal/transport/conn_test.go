@@ -164,7 +164,7 @@ func TestAuthFailureIsNotRetried(t *testing.T) {
 	}
 	// Ошибка обязана опознаваться как отказ аутентификации, иначе ensure
 	// начнёт переподключаться вечно.
-	if got := stateForError(err); got != StateAuthFailed {
+	if got := StateForError(err); got != StateAuthFailed {
 		t.Fatalf("состояние %v, ожидалось StateAuthFailed", got)
 	}
 }

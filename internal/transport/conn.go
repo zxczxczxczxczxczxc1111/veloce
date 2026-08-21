@@ -75,11 +75,23 @@ func (c *conn) setState(s State) {
 	}
 }
 
-// stateForError переводит ошибку подключения в состояние. Без него
+// StateForError переводит ошибку подключения в состояние. Без него
 // StateAuthFailed и StateJumpFailed не выставлялись бы нигде, а ветка в ensure,
 // которая прекращает бессмысленные попытки при неверном ключе, была бы
 // недостижима: панель переподключалась бы вечно с паузой 30 секунд.
-func stateForError(err error) State {
+//
+// Экспортирована ради слоя сервисов: первое подключение падает до того, как
+// повешен хук состояния, и без общего разбора Connect отдавал бы наверх одно
+// «не удалось» на все причины сразу.
+func StateForError(err error) State {
+	var changed *ErrHostKeyChanged
+	if errors.As(err, &changed) {
+		return StateHostKeyChanged
+	}
+	var unknown *ErrHostKeyUnknown
+	if errors.As(err, &unknown) {
+		return StateHostKeyUnknown
+	}
 	switch {
 	case errors.Is(err, ErrJumpFailed):
 		return StateJumpFailed
@@ -139,7 +151,7 @@ func (c *conn) ensure(ctx context.Context) (*ssh.Client, error) {
 	// Отказ аутентификации и неизвестный ключ переподключением не лечатся:
 	// ключ не станет верным от повторной попытки, а долбёжка только разозлит
 	// fail2ban. Здесь нужен человек, а не цикл.
-	if st == StateAuthFailed || st == StateHostKeyUnknown {
+	if st == StateAuthFailed || st == StateHostKeyUnknown || st == StateHostKeyChanged {
 		return nil, io.ErrClosedPipe
 	}
 
@@ -166,7 +178,7 @@ func (c *conn) ensure(ctx context.Context) (*ssh.Client, error) {
 			c.backoff = backoffMax
 		}
 		c.mu.Unlock()
-		c.setState(stateForError(err))
+		c.setState(StateForError(err))
 		return nil, err
 	}
 

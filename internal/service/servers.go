@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
-	"strconv"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -49,7 +47,11 @@ type ConnStateEvent struct {
 	ServerID    string `json:"serverId"`
 	State       string `json:"state"`
 	Fingerprint string `json:"fingerprint,omitempty"`
-	Message     string `json:"message,omitempty"`
+	// KnownFingerprint заполнен только у hostKeyChanged: это тот отпечаток,
+	// который лежит в known_hosts. Показывать смену ключа одним новым
+	// значением бессмысленно, сравнивать не с чем.
+	KnownFingerprint string `json:"knownFingerprint,omitempty"`
+	Message          string `json:"message,omitempty"`
 }
 
 type ServersService struct {
@@ -91,14 +93,28 @@ func (s *ServersService) Connect(id string) error {
 	conn, err := transport.Dial(context.Background(), cfg, hk)
 	if err != nil {
 		var unknown *transport.ErrHostKeyUnknown
-		if asHostKeyErr(err, &unknown) {
+		if errors.As(err, &unknown) {
 			s.app.Event.Emit("conn:state", ConnStateEvent{
 				ServerID: id, State: "hostKeyUnknown", Fingerprint: unknown.Fingerprint,
 			})
 			return nil
 		}
+		// Сменившийся ключ едет со ВТОРЫМ отпечатком: без сохранённого
+		// человеку нечего сравнивать, а решать здесь ему.
+		var changed *transport.ErrHostKeyChanged
+		if errors.As(err, &changed) {
+			s.app.Event.Emit("conn:state", ConnStateEvent{
+				ServerID: id, State: "hostKeyChanged",
+				Fingerprint: changed.Fingerprint, KnownFingerprint: changed.Known,
+			})
+			return nil
+		}
+		// Вид отказа разбирается тем же разбором, что и при переподключении.
+		// Общее «не удалось подключиться» здесь запрещено спекой раздела 10:
+		// «ключ не принят» и «лёг бастион» чинятся совершенно по-разному.
 		s.app.Event.Emit("conn:state", ConnStateEvent{
-			ServerID: id, State: "failed", Message: err.Error(),
+			ServerID: id, State: stateName(transport.StateForError(err)),
+			Message: err.Error(),
 		})
 		return err
 	}
@@ -130,6 +146,8 @@ func stateName(st transport.State) string {
 		return "authFailed"
 	case transport.StateHostKeyUnknown:
 		return "hostKeyUnknown"
+	case transport.StateHostKeyChanged:
+		return "hostKeyChanged"
 	case transport.StateJumpFailed:
 		return "jumpFailed"
 	default:
@@ -182,18 +200,32 @@ func (s *ServersService) TrustHost(id, fingerprint string) error {
 	if seen == nil {
 		return fmt.Errorf("не удалось получить ключ хоста")
 	}
-	hostport := net.JoinHostPort(srv.Host, strconv.Itoa(portOrDefault(srv.Port)))
+	hostport := transport.HostPort(srv.Host, srv.Port)
 	if err := transport.AppendKnownHost(hostport, seen); err != nil {
 		return err
 	}
 	return s.Connect(id)
 }
 
-func portOrDefault(p int) int {
-	if p == 0 {
-		return 22
+// Fingerprint отдаёт сохранённый отпечаток хоста или пустую строку, если хост
+// ещё не подтверждён. Читает known_hosts, своей копии отпечатков приложение не
+// заводит: два источника правды разъедутся в первый же день.
+func (s *ServersService) Fingerprint(id string) (string, error) {
+	srv, ok := s.st.Get(id)
+	if !ok {
+		return "", fmt.Errorf("сервер %s не найден", id)
 	}
-	return p
+	return transport.KnownHostFingerprint(transport.HostPort(srv.Host, srv.Port))
+}
+
+// ForgetHost убирает запись из known_hosts. Нужен, когда сервер пересоздали и
+// ключ сменился законно: без этого пользователь идёт править файл руками.
+func (s *ServersService) ForgetHost(id string) error {
+	srv, ok := s.st.Get(id)
+	if !ok {
+		return fmt.Errorf("сервер %s не найден", id)
+	}
+	return transport.RemoveKnownHost(transport.HostPort(srv.Host, srv.Port))
 }
 
 // configFor собирает конфиг подключения вместе с бастионом. Вынесено отдельно,
@@ -218,8 +250,4 @@ func toTransportConfig(s store.Server) transport.Config {
 		Host: s.Host, Port: s.Port, User: s.User,
 		KeyPath: s.KeyPath, UseAgent: s.UseAgent,
 	}
-}
-
-func asHostKeyErr(err error, target **transport.ErrHostKeyUnknown) bool {
-	return errors.As(err, target)
 }
