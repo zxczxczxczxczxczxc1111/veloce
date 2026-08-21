@@ -57,8 +57,10 @@ export const en: Dict = {
   events: {
     title: "Events",
     counter: "{n} total",
+    counterFiltered: "{k} of {n} shown",
     ago: "{ago} ago",
     empty: "No events, and that is good news",
+    emptyFiltered: "Nothing of this severity, {n} in the feed",
     unread: "{n}",
     filters: {
       all: "All",

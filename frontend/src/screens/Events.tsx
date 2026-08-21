@@ -47,6 +47,8 @@ export function EventsScreen({ serverId, onBack }: Props) {
     };
   }, [serverId, reload]);
 
+  const total = (list ?? []).length;
+
   const shown = useMemo(() => {
     const all = list ?? [];
     return filter === "all" ? all : all.filter((e) => e.severity === filter);
@@ -59,14 +61,20 @@ export function EventsScreen({ serverId, onBack }: Props) {
           {t.project.back}
         </Button>
         <span className="text-sm font-semibold">{t.events.title}</span>
-        <span className="num text-xs text-fg-muted">
-          {t.fmt(t.events.counter, { n: String((list ?? []).length) })}
-        </span>
       </div>
 
       <Card
         className="flex min-h-0 flex-1 flex-col [&>div]:min-h-0 [&>div]:flex-1 [&>div]:overflow-y-auto [&>div]:p-0"
-        title={t.events.title}
+        title={
+          <span className="num">
+            {filter === "all"
+              ? t.fmt(t.events.counter, { n: String(total) })
+              : t.fmt(t.events.counterFiltered, {
+                  k: String(shown.length),
+                  n: String(total),
+                })}
+          </span>
+        }
         actions={
           <div className="flex items-center gap-1">
             {(["all", "critical", "warning", "info"] as const).map((v) => (
@@ -90,8 +98,14 @@ export function EventsScreen({ serverId, onBack }: Props) {
           {error !== null && <p className="px-5 py-3 text-sm text-down">{error}</p>}
           {shown.length === 0 ? (
             // Пустая лента это ХОРОШАЯ новость, и говорить об этом надо прямо,
-            // а не показывать пустоту, неотличимую от поломки.
-            <p className="px-5 py-6 text-sm text-fg-muted">{t.events.empty}</p>
+            // а не показывать пустоту, неотличимую от поломки. Но пустая
+            // ВЫБОРКА хорошей новостью не является: события есть, их просто
+            // отсёк фильтр, и путать эти два случая нельзя.
+            <p className="px-5 py-6 text-sm text-fg-muted">
+              {total === 0
+                ? t.events.empty
+                : t.fmt(t.events.emptyFiltered, { n: String(total) })}
+            </p>
           ) : (
             <ul>
               {shown.map((e, i) => (

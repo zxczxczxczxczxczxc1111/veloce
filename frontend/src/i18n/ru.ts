@@ -56,8 +56,10 @@ export const ru = {
   events: {
     title: "События",
     counter: "всего {n}",
+    counterFiltered: "показано {k} из {n}",
     ago: "{ago} назад",
     empty: "Событий нет, и это хорошая новость",
+    emptyFiltered: "В этой важности событий нет, всего в ленте {n}",
     unread: "{n}",
     filters: {
       all: "Все",
