@@ -146,3 +146,23 @@ func TestStateForConnectErrorSeparatesCauses(t *testing.T) {
 		}
 	}
 }
+
+func TestStateAnswersWithoutWaitingForEvent(t *testing.T) {
+	tempHomeWithKnownHost(t, "")
+	st := storeWith(t, store.Server{ID: "a", Host: "example.com", User: "root"})
+	reg := NewConnRegistry()
+	svc := NewServersService(nil, st, reg)
+
+	// Соединения нет: состояние спрашивается, а не выдумывается.
+	if got := svc.State("a"); got != "disconnected" {
+		t.Fatalf("без соединения состояние %q", got)
+	}
+
+	reg.Set("a", &recordingConn{})
+	// Событие «подключились» могло прилететь ДО того, как экран открылся:
+	// подписка ловит только будущее. Без этого запроса интерфейс считает
+	// сервер отключённым при живом соединении и не запускает такты вообще.
+	if got := svc.State("a"); got != "connected" {
+		t.Fatalf("при живом соединении состояние %q", got)
+	}
+}

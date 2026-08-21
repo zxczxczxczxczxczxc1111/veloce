@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Your original had xmlns="http://w3.org". That namespace does not exist. -->
+  <!-- Browsers rendered it as an empty box and said nothing, like a passive aggressive coworker. -->
+  <defs>
+    <linearGradient id="veloceGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F2FE"/>
+      <stop offset="100%" stop-color="#4FACFE"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF0844"/>
+      <stop offset="100%" stop-color="#FFB199"/>
+    </linearGradient>
+
+    <!-- filter="blur(40px)" is CSS syntax. SVG attributes want a real filter primitive. -->
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="40"/>
+    </filter>
+
+    <!-- Same story for drop-shadow(). feDropShadow exists, use it, stop improvising. -->
+    <filter id="dotGlow" x="-200%" y="-200%" width="500%" height="500%">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#FF0844" flood-opacity="1"/>
+    </filter>
+  </defs>
+
+  <!-- Dark base. Light theme is for people who enjoy pain. -->
+  <rect width="512" height="512" rx="112" fill="#0D1117"/>
+  <circle cx="256" cy="256" r="180" fill="#00F2FE" opacity="0.03" filter="url(#softGlow)"/>
+
+  <g transform="translate(0, 20)">
+    <!-- Bottom rack unit -->
+    <rect x="166" y="290" width="180" height="34" rx="8" fill="none" stroke="url(#veloceGrad)" stroke-width="20" stroke-linejoin="round"/>
+    <circle cx="206" cy="307" r="10" fill="url(#veloceGrad)"/>
+    <line x1="246" y1="307" x2="316" y2="307" stroke="url(#veloceGrad)" stroke-width="12" stroke-linecap="round" stroke-dasharray="1 20"/>
+
+    <!-- Middle rack unit. Identical to the one above it, because servers are boring by design. -->
+    <rect x="166" y="220" width="180" height="34" rx="8" fill="none" stroke="url(#veloceGrad)" stroke-width="20" stroke-linejoin="round"/>
+    <circle cx="206" cy="237" r="10" fill="url(#veloceGrad)"/>
+    <line x1="246" y1="237" x2="316" y2="237" stroke="url(#veloceGrad)" stroke-width="12" stroke-linecap="round" stroke-dasharray="1 20"/>
+
+    <!-- The V. Also a metrics line pretending everything is fine after the dip. -->
+    <path d="M 126 120 L 166 150 L 256 310 L 330 180 L 396 90" fill="none" stroke="url(#accentGrad)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="396" cy="90" r="16" fill="#FFFFFF" filter="url(#dotGlow)"/>
+  </g>
+</svg>

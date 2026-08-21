@@ -5,6 +5,7 @@ import {
   LogsService,
   MetricsService,
   ProjectsService,
+  ServersService,
 } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 
 // Видов ровно столько, сколько их в спеке разделе 10, и каждый рисуется
@@ -33,6 +34,24 @@ export function useConnState(serverId: string | null): ConnState {
     // Смена сервера обязана сбрасывать состояние: иначе «на связи» от
     // предыдущего сервера висит на новом до первого его события.
     setState({ kind: "idle" });
+
+    // Спрашиваем текущее состояние СРАЗУ. Подписка ловит только будущее, а
+    // «подключились» вполне могло прилететь до того, как экран открылся: тогда
+    // живой сервер числился бы отключённым, и такты не запустились бы вообще.
+    let alive = true;
+    void (async () => {
+      try {
+        const now = await ServersService.State(serverId);
+        // Ответ мог опоздать: событие, пришедшее за это время, свежее.
+        setState((prev) =>
+          prev.kind === "idle" && now === "connected" ? { kind: "connected" } : prev,
+        );
+      } catch {
+        // Молчим: отсутствие ответа это не состояние соединения, а сбой
+        // биндинга, и подменять им реальное состояние нельзя.
+      }
+      if (!alive) return;
+    })();
 
     const off = Events.On("conn:state", (e: { data: ConnEvent }) => {
       if (e.data.serverId !== serverId) return;
@@ -80,6 +99,7 @@ export function useConnState(serverId: string | null): ConnState {
       }
     });
     return () => {
+      alive = false;
       off();
     };
   }, [serverId]);
@@ -87,15 +107,33 @@ export function useConnState(serverId: string | null): ConnState {
   return state;
 }
 
-// useServerTickers запускает такты после подключения и гасит их при уходе.
+// Состояния, при которых такты бессмысленны: ключ не станет верным от
+// повторной попытки, а неподтверждённый хост ждёт решения человека. Всё
+// остальное лечится временем, и такт обязан продолжаться.
+function isFatal(kind: ConnState["kind"]): boolean {
+  return kind === "authFailed" || kind === "hostKeyUnknown" || kind === "hostKeyChanged";
+}
+
+// useServerTickers запускает такты и гасит их при уходе с сервера.
 //
 // Без этого хука тикеры не запускаются ВООБЩЕ: событий metrics:tick и
-// projects:tick не будет, и экран обзора останется пустым навсегда. Обратная
-// сторона так же обязательна: не остановив такты, мы продолжаем дёргать
-// мёртвое соединение.
+// projects:tick не будет, и экран обзора останется пустым навсегда.
+//
+// Ключевое: НЕ останавливать такты на degraded и disconnected. Раньше в
+// зависимостях стоял `state.kind`, и это давало два тупика сразу.
+//
+// Первый: один неудачный такт шлёт degraded, эффект гасит тикеры, тактов
+// больше нет, значит и события connected больше никогда не придёт - панель
+// замирает навсегда и молчит об этом.
+//
+// Второй: переподключение в транспорте запускается ПОПЫТКОЙ выполнить
+// команду. Погасив такты при обрыве, мы убираем единственное, что эти попытки
+// делает, и соединение не восстановится само никогда.
 export function useServerTickers(serverId: string | null, state: ConnState): void {
+  const run = serverId !== null && state.kind !== "idle" && !isFatal(state.kind);
+
   useEffect(() => {
-    if (serverId === null || state.kind !== "connected") return;
+    if (serverId === null || !run) return;
     void MetricsService.Start(serverId);
     void ProjectsService.Start(serverId);
     return () => {
@@ -103,5 +141,7 @@ export function useServerTickers(serverId: string | null, state: ConnState): voi
       void ProjectsService.Stop(serverId);
       void LogsService.StopServer(serverId);
     };
-  }, [serverId, state.kind]);
+    // В зависимостях булево, а не вид состояния: смена degraded на connected и
+    // обратно не должна дёргать такты вовсе.
+  }, [serverId, run]);
 }

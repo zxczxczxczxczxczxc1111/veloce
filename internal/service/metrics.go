@@ -46,10 +46,16 @@ type MetricsService struct {
 	conns *ConnRegistry
 	mu    sync.Mutex
 	stop  map[string]context.CancelFunc
+	// failed помнит, что прошлый такт не удался. Нужен, чтобы сообщить об
+	// ОБРАТНОМ переходе: без этого приглушённая шапка и подпись «данные от
+	// 14:32» остаются на экране навсегда, хотя цифры давно снова живые.
+	failed map[string]bool
 }
 
 func NewMetricsService(app *application.App, conns *ConnRegistry) *MetricsService {
-	return &MetricsService{app: app, conns: conns, stop: map[string]context.CancelFunc{}}
+	return &MetricsService{app: app, conns: conns,
+		stop:   map[string]context.CancelFunc{},
+		failed: map[string]bool{}}
 }
 
 func (m *MetricsService) Start(serverID string) error {
@@ -91,6 +97,7 @@ func (m *MetricsService) Start(serverID string) error {
 					m.fail(serverID, err)
 					continue
 				}
+				m.recovered(serverID)
 				m.app.Event.Emit("metrics:tick", toTick(serverID, snap))
 			}
 		}
@@ -101,9 +108,27 @@ func (m *MetricsService) Start(serverID string) error {
 // fail сообщает интерфейсу, что такт не удался. Интерфейс на это приглушает
 // шапку и подписывает время последнего успешного замера.
 func (m *MetricsService) fail(serverID string, err error) {
+	m.mu.Lock()
+	m.failed[serverID] = true
+	m.mu.Unlock()
 	m.app.Event.Emit("conn:state", ConnStateEvent{
 		ServerID: serverID, State: "degraded", Message: err.Error(),
 	})
+}
+
+// recovered сообщает, что такт снова проходит. Отправляется ТОЛЬКО после
+// неудачи: слать «на связи» на каждом такте значит забивать шину событий два
+// раза в секунду ради ничего.
+func (m *MetricsService) recovered(serverID string) {
+	m.mu.Lock()
+	was := m.failed[serverID]
+	delete(m.failed, serverID)
+	m.mu.Unlock()
+	if was {
+		m.app.Event.Emit("conn:state", ConnStateEvent{
+			ServerID: serverID, State: "connected",
+		})
+	}
 }
 
 func (m *MetricsService) Stop(serverID string) {

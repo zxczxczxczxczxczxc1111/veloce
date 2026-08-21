@@ -46,13 +46,18 @@ type ProjectsService struct {
 	stats *collect.StatsCollector
 	mu    sync.Mutex
 	stop  map[string]context.CancelFunc
+	// failed помнит неудачный такт, чтобы сообщить об обратном переходе.
+	// Иначе приглушённая шапка остаётся на экране навсегда: «замерло» шлётся,
+	// а «отмерло» нет.
+	failed map[string]bool
 }
 
 func NewProjectsService(app *application.App, st *store.Store,
 	conns *ConnRegistry) *ProjectsService {
 	return &ProjectsService{app: app, st: st, conns: conns,
-		stats: collect.NewStatsCollector(),
-		stop:  map[string]context.CancelFunc{}}
+		stats:  collect.NewStatsCollector(),
+		stop:   map[string]context.CancelFunc{},
+		failed: map[string]bool{}}
 }
 
 func (p *ProjectsService) Discover(serverID string) ([]ProjectDTO, error) {
@@ -118,10 +123,24 @@ func (p *ProjectsService) Start(serverID string) error {
 				if err != nil {
 					// Молчать нельзя по той же причине, что и в метриках:
 					// застывший список выглядит живым.
+					p.mu.Lock()
+					p.failed[serverID] = true
+					p.mu.Unlock()
 					p.app.Event.Emit("conn:state", ConnStateEvent{
 						ServerID: serverID, State: "degraded", Message: err.Error(),
 					})
 					continue
+				}
+				p.mu.Lock()
+				was := p.failed[serverID]
+				delete(p.failed, serverID)
+				p.mu.Unlock()
+				if was {
+					// Такт снова проходит. Без этого сообщения интерфейс
+					// остаётся приглушённым при живых данных.
+					p.app.Event.Emit("conn:state", ConnStateEvent{
+						ServerID: serverID, State: "connected",
+					})
 				}
 				p.app.Event.Emit("projects:tick", ProjectsTick{
 					ServerID: serverID, Projects: list,
