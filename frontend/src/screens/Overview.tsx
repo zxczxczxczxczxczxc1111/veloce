@@ -24,6 +24,8 @@ type Props = {
   onFixConnection: () => void;
   /** Открыть экран проекта. */
   onOpenProject: (p: ProjectDTO) => void;
+  /** Открыть ленту событий. */
+  onOpenEvents: () => void;
   // История метрик приходит СНАРУЖИ: живи она здесь, каждый уход на экран
   // проекта выбрасывал бы пятиминутное окно спарклайна, и человек возвращался
   // бы к пустым плиткам и подписи «тактов ещё не было».
@@ -36,6 +38,7 @@ export function Overview({
   onConnect,
   onFixConnection,
   onOpenProject,
+  onOpenEvents,
   history,
 }: Props) {
   const t = useT();
@@ -148,6 +151,10 @@ export function Overview({
             транспорт. */}
         <TickAge at={history.lastAt} />
 
+        <Button dense variant="ghost" onClick={onOpenEvents}>
+          {t.events.title}
+        </Button>
+
         {frozen && (
           <span className="num text-sm text-accent">
             {frozenAt !== null
@@ -215,7 +222,10 @@ export function Overview({
           </div>
           <div className="mt-3 h-10 flex flex-col justify-center">
             {disk !== undefined && <Meter percent={percent(disk.used, disk.size)} />}
-            {disk !== undefined && (
+            {/* Точку монтирования показываем ТОЛЬКО когда разделов несколько.
+                На сервере с одним разделом это вечная косая черта, которая не
+                отвечает ни на один вопрос и читается как случайный мусор. */}
+            {disk !== undefined && (last?.disks?.length ?? 0) > 1 && (
               <div className="num mt-2 truncate text-xs text-fg-muted">{disk.mount}</div>
             )}
           </div>

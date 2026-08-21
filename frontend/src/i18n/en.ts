@@ -54,6 +54,19 @@ export const en: Dict = {
       disconnected: "Disconnected",
     },
   },
+  events: {
+    title: "Events",
+    counter: "{n} total",
+    ago: "{ago} ago",
+    empty: "No events, and that is good news",
+    unread: "{n}",
+    filters: {
+      all: "All",
+      critical: "Critical",
+      warning: "Warning",
+      info: "Info",
+    },
+  },
   overview: {
     updated: "updated {ago} ago",
     updatedNever: "no ticks yet",

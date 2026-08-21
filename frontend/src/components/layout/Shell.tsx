@@ -7,6 +7,8 @@ import { Servers } from "../../screens/Servers";
 import { Overview } from "../../screens/Overview";
 import { Project } from "../../screens/Project";
 import { Logs } from "../../screens/Logs";
+import { EventsScreen } from "../../screens/Events";
+import { useUnreadEvents } from "../../state/eventsFeed";
 import type { ProjectDTO } from "../../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 import { useConnState, useServerTickers } from "../../state/conn";
 import { useMetrics } from "../../state/metrics";
@@ -21,7 +23,8 @@ export type Screen =
   // Проект несём целиком, а не по идентификатору: экран обязан нарисоваться
   // сразу, а не ждать первого такта, чтобы узнать имя и состояние.
   | { name: "project"; serverId: string; project: ProjectDTO }
-  | { name: "logs"; serverId: string; project: ProjectDTO };
+  | { name: "logs"; serverId: string; project: ProjectDTO }
+  | { name: "events"; serverId: string };
 
 export function Shell() {
   const [servers, setServers] = useState<Server[] | null>(null);
@@ -61,6 +64,9 @@ export function Shell() {
   // смонтирована всегда, а экраны приходят и уходят вместе с окном истории.
   const history = useMetrics(activeId);
   useIncidentRecorder(activeId);
+  // Счётчики непрочитанного живут в оболочке: рейка видна на всех экранах, и
+  // считать их в экране, который может быть закрыт, бессмысленно.
+  const unread = useUnreadEvents(servers ?? []);
 
   const openServer = useCallback((id: string) => {
     setScreen({ name: "overview", serverId: id });
@@ -73,6 +79,8 @@ export function Shell() {
         activeId={activeId}
         onSelect={openServer}
         onAdd={() => setScreen({ name: "servers" })}
+        unread={unread}
+        onEvents={(id) => setScreen({ name: "events", serverId: id })}
       />
 
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
@@ -104,6 +112,9 @@ export function Shell() {
                 setScreen({ name: "project", serverId: screen.serverId, project: p })
               }
               history={history}
+              onOpenEvents={() =>
+                setScreen({ name: "events", serverId: screen.serverId })
+              }
             />
           )}
 
@@ -119,6 +130,13 @@ export function Shell() {
                   project: screen.project,
                 })
               }
+            />
+          )}
+
+          {screen.name === "events" && (
+            <EventsScreen
+              serverId={screen.serverId}
+              onBack={() => setScreen({ name: "overview", serverId: screen.serverId })}
             />
           )}
 

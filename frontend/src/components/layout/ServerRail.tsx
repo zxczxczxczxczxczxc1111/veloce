@@ -7,11 +7,22 @@ type Props = {
   activeId: string | null;
   onSelect: (id: string) => void;
   onAdd: () => void;
+  /** Непрочитанные события по серверам. */
+  unread: Record<string, number>;
+  /** Открыть ленту событий сервера. */
+  onEvents: (id: string) => void;
 };
 
 // Ширина рейки фиксированная, содержимое справа тянется. Раскладка рассчитана
 // на 1920 и 2560, мобильной не предусмотрено.
-export function ServerRail({ servers, activeId, onSelect, onAdd }: Props) {
+export function ServerRail({
+  servers,
+  activeId,
+  onSelect,
+  onAdd,
+  unread,
+  onEvents,
+}: Props) {
   const t = useT();
   const lang = useLang();
   const setLang = useSetLang();
@@ -75,9 +86,32 @@ export function ServerRail({ servers, activeId, onSelect, onAdd }: Props) {
                 <span className="w-full truncate text-sm">
                   {s.label !== "" ? s.label : s.host}
                 </span>
-                <span className="w-full truncate text-xs text-fg-muted">
-                  {s.user !== "" ? s.user + "@" : ""}
-                  {s.host}
+                <span className="flex w-full items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">
+                    {s.user !== "" ? s.user + "@" : ""}
+                    {s.host}
+                  </span>
+                  {/* Счётчик событий прямо в рейке: беда должна звать к себе,
+                      а не ждать, пока человек догадается открыть ленту. */}
+                  {(unread[s.id] ?? 0) > 0 && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEvents(s.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.stopPropagation();
+                          onEvents(s.id);
+                        }
+                      }}
+                      className="num shrink-0 cursor-pointer rounded-md bg-accent px-1.5 text-[10px] font-semibold text-accent-fg"
+                    >
+                      {unread[s.id]}
+                    </span>
+                  )}
                 </span>
               </button>
             </li>

@@ -38,6 +38,13 @@ func main() {
 	}
 	diag.Logf("=== запуск приложения ===")
 
+	// Лента событий лежит рядом с настройками и переживает перезапуск: вопрос
+	// «что было ночью» ради неё и задан, а ночью приложение закрыто.
+	events, err := store.OpenIncidents(filepath.Join(filepath.Dir(path), "events.json"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	conns := service.NewConnRegistry()
 
 	app := application.New(application.Options{
@@ -55,6 +62,7 @@ func main() {
 	// он один на всё приложение: создай его заново на каждый экран, и «отвечал
 	// 14 минут назад» обнулялось бы при каждом переходе.
 	app.RegisterService(application.NewService(service.NewHealthService(conns)))
+	app.RegisterService(application.NewService(service.NewEventsService(app, conns, events)))
 	app.RegisterService(application.NewService(service.NewDiagService()))
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{

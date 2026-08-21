@@ -53,6 +53,19 @@ export const ru = {
       disconnected: "Связи нет",
     },
   },
+  events: {
+    title: "События",
+    counter: "всего {n}",
+    ago: "{ago} назад",
+    empty: "Событий нет, и это хорошая новость",
+    unread: "{n}",
+    filters: {
+      all: "Все",
+      critical: "Критично",
+      warning: "Тревога",
+      info: "Справка",
+    },
+  },
   overview: {
     updated: "обновлено {ago} назад",
     updatedNever: "тактов ещё не было",

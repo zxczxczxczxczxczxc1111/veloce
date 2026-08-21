@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ConnEvent } from "./events";
 import { diag } from "./diag";
 import {
+  EventsService,
   LogsService,
   MetricsService,
   ProjectsService,
@@ -170,10 +171,14 @@ export function useServerTickers(serverId: string | null, state: ConnState): voi
     void ProjectsService.Start(serverId).catch((e) =>
       diag(`ProjectsService.Start отказ: ${String(e)}`),
     );
+    void EventsService.Start(serverId).catch((e) =>
+      diag(`EventsService.Start отказ: ${String(e)}`),
+    );
     return () => {
       diag(`useServerTickers: гасим такты сервера ${serverId}`);
       void MetricsService.Stop(serverId);
       void ProjectsService.Stop(serverId);
+      void EventsService.Stop(serverId);
       void LogsService.StopServer(serverId);
     };
     // В зависимостях булево, а не вид состояния: смена degraded на connected и

@@ -4,7 +4,10 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
+	"github.com/zxczxczxczxczxczxc1111/veloce/internal/collect"
+	"github.com/zxczxczxczxczxczxc1111/veloce/internal/store"
 	"github.com/zxczxczxczxczxczxc1111/veloce/internal/transport"
 )
 
@@ -73,5 +76,66 @@ func TestLiveHealthCheck(t *testing.T) {
 	}
 	if again.LastOkAt < ok.LastOkAt {
 		t.Fatal("время последнего успеха поехало назад")
+	}
+}
+
+// TestLiveEventSources проверяет детекторы на НАСТОЯЩЕМ сервере: команды те
+// же, что в такте, только читаем и печатаем, ничего не сохраняя.
+func TestLiveEventSources(t *testing.T) {
+	host := os.Getenv("VELOCE_LIVE_HOST")
+	if host == "" {
+		t.Skip("VELOCE_LIVE_HOST не задан")
+	}
+	cfg := transport.Config{
+		Host: host, Port: 22,
+		User:    os.Getenv("VELOCE_LIVE_USER"),
+		KeyPath: os.Getenv("VELOCE_LIVE_KEY"),
+	}
+	policy, err := transport.KnownHosts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := transport.Dial(context.Background(), cfg, policy)
+	if err != nil {
+		t.Fatalf("подключение: %v", err)
+	}
+	defer conn.Close()
+
+	es, err := store.OpenIncidents(t.TempDir() + "/events.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := NewConnRegistry()
+	reg.Set("live", conn)
+	svc := NewEventsService(nil, reg, es)
+	st := &sourceState{jails: map[string]collect.JailStatus{}}
+	svc.prev["live"] = st
+	ctx := context.Background()
+
+	// Первый проход: только запоминаем точку отсчёта.
+	if got := svc.checkFail2ban(ctx, conn, "live", st); len(got) != 0 {
+		t.Fatalf("первый проход fail2ban выдал события: %+v", got)
+	}
+	if got := svc.checkNginx(ctx, conn, "live", st); len(got) != 0 {
+		t.Fatalf("первый проход nginx выдал события: %+v", got)
+	}
+	st.primed = true
+
+	for jail, s := range st.jails {
+		t.Logf("jail %s: отказов всего=%d, банов всего=%d, сейчас в бане=%d %v",
+			jail, s.TotalFailed, s.TotalBanned, s.CurrentlyBanned, s.BannedIPs)
+	}
+	t.Logf("позиция в access.log: %d байт", st.accessOffset)
+	if st.accessOffset == 0 {
+		t.Fatal("журнал nginx не прочитан: детектор всплесков работать не будет")
+	}
+
+	// Второй проход через паузу: показывает, что видит панель за такт.
+	time.Sleep(20 * time.Second)
+	found := append(svc.checkFail2ban(ctx, conn, "live", st),
+		svc.checkNginx(ctx, conn, "live", st)...)
+	t.Logf("за 20 секунд наблюдения событий: %d", len(found))
+	for _, e := range found {
+		t.Logf("  [%s] %s | %s", e.Severity, e.Title, e.Detail)
 	}
 }
