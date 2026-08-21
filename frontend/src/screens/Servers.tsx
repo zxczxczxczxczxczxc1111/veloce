@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ServersService } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
+import type { KnownHostEntry } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/transport";
 import type { Server } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/store";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -81,18 +82,20 @@ type CardProps = {
 function ServerCard({ server, servers, onEdit, onChanged, onOpen }: CardProps) {
   const t = useT();
   const state = useConnState(server.id);
-  const [fingerprint, setFingerprint] = useState<string | null>(null);
+  // null - ещё не читали, пустой массив - хост не подтверждён. У одного хоста
+  // бывает по записи на алгоритм ключа, поэтому список, а не строка.
+  const [fingerprints, setFingerprints] = useState<KnownHostEntry[] | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadFingerprint = useCallback(async () => {
     try {
-      setFingerprint(await ServersService.Fingerprint(server.id));
+      setFingerprints((await ServersService.Fingerprints(server.id)) ?? []);
     } catch (e: unknown) {
       // Отпечаток не критичен для работы карточки, но молчать про сбой нельзя:
-      // пустое поле читается как «хост не подтверждён», а это другое.
+      // пустой список читается как «хост не подтверждён», а это другое.
       setError(message(e));
-      setFingerprint(null);
+      setFingerprints(null);
     }
   }, [server.id]);
 
@@ -192,10 +195,20 @@ function ServerCard({ server, servers, onEdit, onChanged, onOpen }: CardProps) {
         )}
 
         <dt className="text-fg-muted">{t.servers.fingerprint}</dt>
-        <dd className="flex items-center gap-3">
-          {fingerprint !== null && fingerprint !== "" ? (
+        <dd className="flex items-start gap-3">
+          {fingerprints !== null && fingerprints.length > 0 ? (
             <>
-              <span className="num truncate text-fg-secondary">{fingerprint}</span>
+              <span className="flex min-w-0 flex-col gap-0.5">
+                {fingerprints.map((f) => (
+                  // Алгоритм рядом с отпечатком обязателен: иначе человек
+                  // сравнивает ed25519 из файла с ecdsa из диалога и делает
+                  // вывод о подмене там, где ничего не менялось.
+                  <span key={f.type + f.fingerprint} className="num truncate">
+                    <span className="text-fg-muted">{f.type} </span>
+                    <span className="text-fg-secondary">{f.fingerprint}</span>
+                  </span>
+                ))}
+              </span>
               <Button
                 dense
                 variant="ghost"

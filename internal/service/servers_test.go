@@ -62,12 +62,12 @@ func TestFingerprintReadsKnownHosts(t *testing.T) {
 	st := storeWith(t, store.Server{ID: "a", Host: "example.com", Port: 22, User: "root"})
 	svc := NewServersService(nil, st, NewConnRegistry())
 
-	got, err := svc.Fingerprint("a")
+	got, err := svc.Fingerprints("a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != ssh.FingerprintSHA256(key) {
-		t.Fatalf("отпечаток %q", got)
+	if len(got) != 1 || got[0].Fingerprint != ssh.FingerprintSHA256(key) {
+		t.Fatalf("отпечаток %v", got)
 	}
 }
 
@@ -78,11 +78,11 @@ func TestFingerprintUsesDefaultPortWhenZero(t *testing.T) {
 	st := storeWith(t, store.Server{ID: "a", Host: "example.com", User: "root"})
 	svc := NewServersService(nil, st, NewConnRegistry())
 
-	got, err := svc.Fingerprint("a")
+	got, err := svc.Fingerprints("a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got == "" {
+	if len(got) == 0 {
 		t.Fatal("порт 0 не сведён к 22")
 	}
 }
@@ -92,12 +92,12 @@ func TestFingerprintEmptyForUnconfirmedHost(t *testing.T) {
 	st := storeWith(t, store.Server{ID: "a", Host: "example.com", User: "root"})
 	svc := NewServersService(nil, st, NewConnRegistry())
 
-	got, err := svc.Fingerprint("a")
+	got, err := svc.Fingerprints("a")
 	if err != nil {
 		t.Fatalf("неподтверждённый хост считается ошибкой: %v", err)
 	}
-	if got != "" {
-		t.Fatalf("отпечаток из ниоткуда: %q", got)
+	if len(got) != 0 {
+		t.Fatalf("отпечаток из ниоткуда: %v", got)
 	}
 }
 
@@ -105,7 +105,7 @@ func TestFingerprintUnknownServer(t *testing.T) {
 	tempHomeWithKnownHost(t, "")
 	svc := NewServersService(nil, storeWith(t), NewConnRegistry())
 
-	if _, err := svc.Fingerprint("нет-такого"); err == nil {
+	if _, err := svc.Fingerprints("нет-такого"); err == nil {
 		t.Fatal("отсутствующий сервер обязан быть ошибкой, а не пустой строкой")
 	}
 }
@@ -118,12 +118,12 @@ func TestForgetHostRemovesEntry(t *testing.T) {
 	if err := svc.ForgetHost("a"); err != nil {
 		t.Fatal(err)
 	}
-	got, err := svc.Fingerprint("a")
+	got, err := svc.Fingerprints("a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "" {
-		t.Fatalf("ключ не забыт: %q", got)
+	if len(got) != 0 {
+		t.Fatalf("ключ не забыт: %v", got)
 	}
 }
 

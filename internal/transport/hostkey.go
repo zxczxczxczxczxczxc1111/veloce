@@ -82,7 +82,7 @@ func KnownHosts() (HostKeyPolicy, error) {
 			return &ErrHostKeyChanged{
 				Host:        hostport,
 				Fingerprint: ssh.FingerprintSHA256(key),
-				Known:       knownFingerprint(kerr),
+				Known:       knownFingerprint(kerr, key),
 			}
 		}
 		return err
@@ -122,13 +122,23 @@ func asKeyError(err error, target **knownhosts.KeyError) bool {
 }
 
 // knownFingerprint достаёт отпечаток сохранённого ключа из ошибки knownhosts.
-// Записей может быть несколько (у хоста бывает по ключу на каждый алгоритм),
-// берём первую: показываем ту, с которой ключ и разошёлся.
-func knownFingerprint(kerr *knownhosts.KeyError) string {
+//
+// Записей бывает несколько: у хоста лежит по ключу на каждый алгоритм. Берём
+// запись ТОГО ЖЕ алгоритма, что и пришедший ключ. Иначе человеку показывают
+// «сохранён ed25519, пришёл ecdsa», он видит два разных отпечатка и делает
+// вывод о подмене там, где сменился всего лишь алгоритм.
+func knownFingerprint(kerr *knownhosts.KeyError, got ssh.PublicKey) string {
+	var fallback string
 	for _, w := range kerr.Want {
-		if w.Key != nil {
+		if w.Key == nil {
+			continue
+		}
+		if w.Key.Type() == got.Type() {
 			return ssh.FingerprintSHA256(w.Key)
 		}
+		if fallback == "" {
+			fallback = ssh.FingerprintSHA256(w.Key)
+		}
 	}
-	return ""
+	return fallback
 }

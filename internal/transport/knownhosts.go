@@ -37,14 +37,24 @@ func readKnownHosts() ([]byte, error) {
 	return raw, err
 }
 
-// KnownHostFingerprint отдаёт сохранённый отпечаток хоста или пустую строку,
-// если хост ещё не подтверждён.
-func KnownHostFingerprint(hostport string) (string, error) {
+// KnownHostEntry - одна подтверждённая запись про хост.
+type KnownHostEntry struct {
+	// Type - алгоритм ключа ("ssh-ed25519", "ecdsa-sha2-nistp256" и прочие).
+	// Обязателен на экране: у одного хоста запросто лежит по записи на
+	// алгоритм, и без подписи человек сравнивает отпечаток ed25519 с
+	// отпечатком ecdsa, видит расхождение и делает неверный вывод.
+	Type        string `json:"type"`
+	Fingerprint string `json:"fingerprint"`
+}
+
+// KnownHostFingerprints отдаёт все сохранённые отпечатки хоста. Пустой срез
+// значит, что хост ещё не подтверждён.
+func KnownHostFingerprints(hostport string) ([]KnownHostEntry, error) {
 	raw, err := readKnownHosts()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return lookupKnownHost(raw, hostport), nil
+	return lookupKnownHosts(raw, hostport), nil
 }
 
 // RemoveKnownHost убирает запись из known_hosts. Нужен, когда сервер
@@ -72,12 +82,17 @@ func RemoveKnownHost(hostport string) error {
 	return os.Rename(tmp, path)
 }
 
-// lookupKnownHost ищет отпечаток хоста в содержимом known_hosts.
+// lookupKnownHosts ищет ВСЕ отпечатки хоста в содержимом known_hosts.
+//
+// Именно все: OpenSSH держит отдельную запись на каждый алгоритм ключа, а
+// какой из них выберет рукопожатие, заранее неизвестно. Показать один
+// произвольный значит однажды показать не тот, который человек подтверждал.
 //
 // Разбираем построчно, а не одним ssh.ParseKnownHosts по всему файлу: на
 // первой же битой строке разбор всего файла останавливается, а known_hosts у
 // живого человека правится руками годами и мусор там есть всегда.
-func lookupKnownHost(raw []byte, hostport string) string {
+func lookupKnownHosts(raw []byte, hostport string) []KnownHostEntry {
+	var out []KnownHostEntry
 	for _, line := range strings.Split(string(raw), "\n") {
 		marker, hosts, key, ok := parseKnownHostsLine(line)
 		// Маркеры @revoked и @cert-authority это не «хост подтверждён».
@@ -86,10 +101,12 @@ func lookupKnownHost(raw []byte, hostport string) string {
 			continue
 		}
 		if matchHostPatterns(hosts, hostport) {
-			return ssh.FingerprintSHA256(key)
+			out = append(out, KnownHostEntry{
+				Type: key.Type(), Fingerprint: ssh.FingerprintSHA256(key),
+			})
 		}
 	}
-	return ""
+	return out
 }
 
 // filterKnownHost возвращает содержимое файла без записей про этот хост.

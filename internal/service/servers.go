@@ -207,15 +207,20 @@ func (s *ServersService) TrustHost(id, fingerprint string) error {
 	return s.Connect(id)
 }
 
-// Fingerprint отдаёт сохранённый отпечаток хоста или пустую строку, если хост
-// ещё не подтверждён. Читает known_hosts, своей копии отпечатков приложение не
-// заводит: два источника правды разъедутся в первый же день.
-func (s *ServersService) Fingerprint(id string) (string, error) {
+// Fingerprints отдаёт сохранённые отпечатки хоста, по одному на алгоритм
+// ключа. Пустой срез значит, что хост ещё не подтверждён. Читает known_hosts,
+// своей копии отпечатков приложение не заводит: два источника правды
+// разъедутся в первый же день.
+//
+// Срез, а не строка: у прода спокойно лежит и ed25519, и ecdsa, а какой из них
+// выберет рукопожатие, заранее неизвестно. Показав один произвольный, мы
+// однажды покажем не тот, который человек подтверждал.
+func (s *ServersService) Fingerprints(id string) ([]transport.KnownHostEntry, error) {
 	srv, ok := s.st.Get(id)
 	if !ok {
-		return "", fmt.Errorf("сервер %s не найден", id)
+		return nil, fmt.Errorf("сервер %s не найден", id)
 	}
-	return transport.KnownHostFingerprint(transport.HostPort(srv.Host, srv.Port))
+	return transport.KnownHostFingerprints(transport.HostPort(srv.Host, srv.Port))
 }
 
 // ForgetHost убирает запись из known_hosts. Нужен, когда сервер пересоздали и
