@@ -108,12 +108,17 @@ export function ServerForm({ server, servers, onSave, onCancel }: Props) {
         />
         <Field
           label={t.servers.user}
+          // Подпись под полем, а не только метка: имя учётной записи легко
+          // спутать с именем файла ключа, и сервер на это отвечает сухим
+          // «ключ не принят».
+          hint={t.servers.userHint}
           value={user}
           invalid={touched && userBad}
           onChange={(e) => setUser(e.target.value)}
         />
         <Field
           label={t.servers.keyPath}
+          hint={t.servers.keyPathHint}
           placeholder="C:\Users\...\.ssh\id_ed25519"
           value={keyPath}
           onChange={(e) => setKeyPath(e.target.value)}

@@ -17,7 +17,11 @@ import (
 // Канал агента OpenSSH на Windows. Это единственный поддерживаемый агент:
 // Pageant говорит по другому протоколу и ради него заводить вторую ветку кода
 // не будем.
-const agentPipe = `\.\pipe\openssh-ssh-agent`
+//
+// ДВЕ обратных косых в начале обязательны, это формат именованного канала
+// Windows. С одной DialPipe не найдёт агент никогда, и галочка «Агент
+// OpenSSH» отвечает «агент недоступен» даже на живой службе.
+const agentPipe = `\\.\pipe\openssh-ssh-agent`
 
 func authMethods(cfg Config) ([]ssh.AuthMethod, error) {
 	var methods []ssh.AuthMethod
@@ -25,7 +29,10 @@ func authMethods(cfg Config) ([]ssh.AuthMethod, error) {
 	if cfg.UseAgent {
 		pipe, err := winio.DialPipe(agentPipe, nil)
 		if err != nil {
-			return nil, fmt.Errorf("агент OpenSSH недоступен: %w", err)
+			// Служба ssh-agent на Windows по умолчанию отключена, и это самая
+			// частая причина. Голое «файл не найден» отправляет искать не там.
+			return nil, fmt.Errorf(
+				"агент OpenSSH недоступен, проверьте службу ssh-agent: %w", err)
 		}
 		methods = append(methods, ssh.PublicKeysCallback(agent.NewClient(pipe).Signers))
 	}
@@ -154,7 +161,25 @@ func dialDirect(ctx context.Context, cfg Config, hk HostKeyPolicy) (*ssh.Client,
 	ncc, chans, reqs, err := ssh.NewClientConn(raw, addr(cfg), cc)
 	if err != nil {
 		raw.Close()
-		return nil, err
+		// Кому и чем стучались - обязательная часть отказа. «Ключ не принят»
+		// без учётной записи заставляет искать вслепую: человек, вписавший в
+		// поле пользователя имя файла ключа, ничего не заподозрит, потому что
+		// его ошибка на экране не показана.
+		return nil, fmt.Errorf("%s@%s (%s): %w", cfg.User, addr(cfg), credentialSource(cfg), err)
 	}
 	return ssh.NewClient(ncc, chans, reqs), nil
+}
+
+// credentialSource описывает, чем именно пробовали войти.
+func credentialSource(cfg Config) string {
+	switch {
+	case cfg.UseAgent && cfg.KeyPath != "":
+		return "агент OpenSSH и ключ " + cfg.KeyPath
+	case cfg.UseAgent:
+		return "агент OpenSSH"
+	case cfg.KeyPath != "":
+		return "ключ " + cfg.KeyPath
+	default:
+		return "без ключа"
+	}
 }
