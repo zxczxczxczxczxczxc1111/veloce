@@ -23,9 +23,9 @@ func (f *fakeConn) Run(context.Context, string) (transport.Result, error) {
 }
 
 func (f *fakeConn) Stream(context.Context, string) (io.ReadCloser, error) { return nil, nil }
-func (f *fakeConn) State() transport.State                               { return transport.StateConnected }
-func (f *fakeConn) SetStateHook(func(transport.State))                   {}
-func (f *fakeConn) Close() error                                         { return nil }
+func (f *fakeConn) State() transport.State                                { return transport.StateConnected }
+func (f *fakeConn) SetStateHook(func(transport.State))                    {}
+func (f *fakeConn) Close() error                                          { return nil }
 
 func joinParts(parts ...string) string { return strings.Join(parts, sep) }
 
