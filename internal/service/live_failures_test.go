@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -326,5 +327,41 @@ func TestLiveBreakContainerThatNeverComesUp(t *testing.T) {
 	t.Logf("после перезапуска: состояние=%s статус=%q", after.State, after.Status)
 	if after.State == string(collect.StateRunning) {
 		t.Fatal("сломанный контейнер внезапно поднялся, тест бессмысленен")
+	}
+}
+
+// TestLiveBreakWatchTicksDuringOutage печатает то, что интерфейс получает
+// КАЖДЫЙ такт во время остановки. Нужен потому, что на экране у остановленного
+// контейнера остались цифры потребления, а сервер их не отдаёт: значит врёт
+// что-то между ними, и надо видеть каждый шаг.
+func TestLiveBreakWatchTicksDuringOutage(t *testing.T) {
+	cfg := liveBreakCfg(t)
+	ps, _ := liveProjects(t, cfg)
+	const stand = "demo-app-test"
+
+	show := func(when string) ProjectDTO {
+		p := findProject(t, ps, stand)
+		t.Logf("%-14s состояние=%-8s статус=%-32q cpu=%.1f (известно=%v) mem=%d (известно=%v)",
+			when, p.State, p.Status, p.CPUPercent, p.CPUKnown, p.MemBytes, p.MemKnown)
+		return p
+	}
+
+	show("до остановки")
+	if err := ps.Action("live", stand, collect.KindDocker, "stop"); err != nil {
+		t.Fatalf("остановка: %v", err)
+	}
+	defer func() {
+		if err := ps.Action("live", stand, collect.KindDocker, "start"); err != nil {
+			t.Fatalf("стенд не поднят обратно: %v", err)
+		}
+		show("после подъёма")
+	}()
+
+	for i := 1; i <= 4; i++ {
+		time.Sleep(4 * time.Second)
+		p := show("такт " + strconv.Itoa(i))
+		if p.State == string(collect.StateDown) && (p.CPUKnown || p.MemKnown) {
+			t.Errorf("такт %d: у остановленного контейнера цифры числятся известными", i)
+		}
 	}
 }

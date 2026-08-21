@@ -161,3 +161,27 @@ func TestSystemdCPUUnknownUntilSecondSample(t *testing.T) {
 		t.Fatal("на втором замере загрузка обязана быть известна")
 	}
 }
+
+func TestStatsIgnoredWhenStateSaysNoProcess(t *testing.T) {
+	// Состояние и цифры приезжают РАЗНЫМИ командами: `docker ps -a` и
+	// `docker stats` выполняются с разницей в полторы секунды. Контейнер,
+	// поднятый между ними, даёт «Exited» из первой команды и живые проценты
+	// из второй, и панель рисует мёртвый контейнер, жрущий процессор.
+	// Решает состояние: нет процесса - нет и цифр.
+	projects := []Project{{Kind: KindDocker, ID: "web", State: StateDown}}
+	c := &scriptedConn{replies: map[string]transport.Result{
+		"docker stats": {Stdout: `{"Name":"web","CPUPerc":"73.70%","MemUsage":"61.6MiB / 3.8GiB"}` + "\n"},
+		"cgroup.controllers": {Code: 127},
+	}}
+
+	got, err := NewStatsCollector().Collect(context.Background(), "srv1", c, projects)
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if got[0].CPUKnown || got[0].MemKnown {
+		t.Fatalf("остановленному контейнеру приписаны цифры: %+v", got[0])
+	}
+	if got[0].CPUPercent != 0 || got[0].MemBytes != 0 {
+		t.Fatalf("значения просочились: %+v", got[0])
+	}
+}

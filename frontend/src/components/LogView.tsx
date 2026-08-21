@@ -8,6 +8,8 @@ type Props = {
   serverId: string;
   projectId: string;
   kind: string;
+  /** Работает ли проект: по этому признаку поток возобновляется после обрыва. */
+  live: boolean;
   /** Высота потока. На экране логов во весь рост, в карточке проекта ниже. */
   className?: string;
 };
@@ -30,8 +32,8 @@ const BOTTOM_SLACK = 24;
 // LogView это проводка: берёт поток и отдаёт его панели. Разделение нужно не
 // ради красоты, а чтобы панель можно было прогнать под настоящей нагрузкой без
 // Go-рантайма: иначе «интерфейс не подвисает» остаётся словами.
-export function LogView({ serverId, projectId, kind, className = "" }: Props) {
-  const logs = useLogs(serverId, projectId, kind);
+export function LogView({ serverId, projectId, kind, live, className = "" }: Props) {
+  const logs = useLogs(serverId, projectId, kind, live);
   return (
     <LogPanel
       lines={logs.lines}

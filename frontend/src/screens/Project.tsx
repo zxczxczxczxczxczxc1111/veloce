@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Events } from "@wailsio/runtime";
 import { ProjectsService } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 import type {
   HealthResult,
   ProjectDTO,
 } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
-import type { ProjectsTick } from "../state/events";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { LogView } from "../components/LogView";
 import { RestartOutcome, StatusDot, detail } from "../components/ProjectRow";
@@ -14,6 +12,7 @@ import { Card } from "../components/ui/Card";
 import { useFormat } from "../format";
 import { useT } from "../i18n";
 import { useRestart } from "../state/actions";
+import { useProjectTick } from "../state/projects";
 import { useHealth } from "../state/health";
 import { kindOf } from "../state/logs";
 
@@ -28,7 +27,7 @@ type Props = {
 export function Project({ serverId, project, onBack, onFullLogs }: Props) {
   const t = useT();
   const f = useFormat();
-  const [current, setCurrent] = useState(project);
+  const current = useProjectTick(serverId, project);
   const [restarts, setRestarts] = useState<number | null>(null);
   const [confirm, setConfirm] = useState(false);
   const restart = useRestart(serverId, current);
@@ -36,21 +35,6 @@ export function Project({ serverId, project, onBack, onFullLogs }: Props) {
   // остановленного значит каждые пятнадцать секунд получать ожидаемый отказ и
   // красить карточку красным без новостей.
   const health = useHealth(serverId, current.health, current.state === "running");
-
-  // Карточка живёт с общего такта проектов, своего опроса не заводит: два
-  // источника одних и тех же цифр разъедутся на глазах у человека.
-  useEffect(() => {
-    const off = Events.On("projects:tick", (e: { data: ProjectsTick }) => {
-      if (e.data.serverId !== serverId) return;
-      const fresh = (e.data.projects ?? []).find(
-        (p) => p.kind === project.kind && p.id === project.id,
-      );
-      if (fresh !== undefined) setCurrent(fresh);
-    });
-    return () => {
-      off();
-    };
-  }, [serverId, project.kind, project.id]);
 
   const loadRestarts = useCallback(async () => {
     try {
@@ -133,6 +117,7 @@ export function Project({ serverId, project, onBack, onFullLogs }: Props) {
           serverId={serverId}
           projectId={current.id}
           kind={current.kind}
+          live={current.state === "running"}
           className="h-full"
         />
       </Card>

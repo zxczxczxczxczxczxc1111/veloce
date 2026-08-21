@@ -117,9 +117,7 @@ export function Shell() {
           {screen.name === "logs" && (
             <Logs
               serverId={screen.serverId}
-              projectId={screen.project.id}
-              kind={screen.project.kind}
-              name={screen.project.name}
+              project={screen.project}
               onBack={() =>
                 setScreen({
                   name: "project",

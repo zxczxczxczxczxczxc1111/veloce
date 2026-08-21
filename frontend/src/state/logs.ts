@@ -35,11 +35,16 @@ export function kindOf(kind: string): ProjectKind {
   return kind === "docker" ? ProjectKind.KindDocker : ProjectKind.KindSystemd;
 }
 
-// Как часто пробуем открыть поток заново после обрыва. Контейнер обычно
-// поднимается за секунды, а долбить сервер чаще незачем.
-const RETRY_MS = 5000;
-
-export function useLogs(serverId: string, projectId: string, kind: string): Logs {
+export function useLogs(
+  serverId: string,
+  projectId: string,
+  kind: string,
+  // live - работает ли проект прямо сейчас. Поток возобновляется ТОЛЬКО когда
+  // он снова поднялся. Слепые повторы по таймеру тут не годятся: docker logs -f
+  // на остановленном контейнере не ждёт, а сразу печатает историю и выходит,
+  // то есть каждая попытка лила бы двести строк заново.
+  live: boolean,
+): Logs {
   const [lines, setLines] = useState<LogLine[]>([]);
   const [paused, setPaused] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +65,10 @@ export function useLogs(serverId: string, projectId: string, kind: string): Logs
   const waitingRef = useRef(false);
   waitingRef.current = waiting;
 
+  // Ссылка на попытку открыть поток: дёргает её эффект, следящий за подъёмом
+  // проекта, а живёт она внутри другого эффекта.
+  const startRef = useRef<(() => Promise<void>) | null>(null);
+
   // Подписи берутся из словаря, но читать хук внутри эффекта нельзя, поэтому
   // забираем их заранее.
   const t = useT();
@@ -68,7 +77,6 @@ export function useLogs(serverId: string, projectId: string, kind: string): Logs
 
   useEffect(() => {
     let alive = true;
-    let retry = 0;
     // resumed=false у первого запуска: отметку «поток возобновлён» ставим
     // только после настоящего обрыва, а не при открытии экрана.
     let resumed = false;
@@ -92,11 +100,12 @@ export function useLogs(serverId: string, projectId: string, kind: string): Logs
     // молча замолкает, и понять, что случилось, нельзя.
     const offStream = Events.On("logs:stream", (e: { data: LogStreamEvent }) => {
       if (e.data.serverId !== serverId || e.data.projectId !== projectId) return;
-      if (e.data.state === "ended") {
-        setWaiting(true);
-        mark(streamEndedText);
-        retry = window.setTimeout(tryStart, RETRY_MS);
-      }
+      if (e.data.state !== "ended") return;
+      // Отметка ставится ОДИН раз на обрыв: повторные попытки не должны
+      // засыпать лог одинаковыми строками.
+      if (waitingRef.current) return;
+      setWaiting(true);
+      mark(streamEndedText);
     });
 
     // Сначала подписка, потом Start: между этими двумя вызовами уже летят
@@ -142,21 +151,18 @@ export function useLogs(serverId: string, projectId: string, kind: string): Logs
         );
       } catch (e: unknown) {
         if (!alive) return;
-        // Проект ещё не поднялся: это ожидаемо, а не поломка. Пробуем снова,
-        // но молча - сыпать ошибкой каждые пять секунд бессмысленно.
-        if (waitingRef.current) {
-          retry = window.setTimeout(tryStart, RETRY_MS);
-          return;
-        }
+        // Пока ждём подъёма, отказ ожидаем и молчалив.
+        if (waitingRef.current) return;
         setError(e instanceof Error ? e.message : String(e));
       }
     }
 
     void tryStart();
+    startRef.current = tryStart;
 
     return () => {
       alive = false;
-      if (retry !== 0) window.clearTimeout(retry);
+      startRef.current = null;
       offStream();
       off();
       // Стрим на сервере закрывается вместе с экраном, иначе `docker logs -f`
@@ -164,6 +170,13 @@ export function useLogs(serverId: string, projectId: string, kind: string): Logs
       void LogsService.Stop(serverId, projectId);
     };
   }, [serverId, projectId, kind]);
+
+  // Проект снова работает, а мы ждали - открываем поток заново. Именно по
+  // событию подъёма, а не по времени.
+  useEffect(() => {
+    if (!live || !waiting) return;
+    void startRef.current?.();
+  }, [live, waiting]);
 
   const setPausedStable = useCallback((v: boolean) => setPaused(v), []);
 

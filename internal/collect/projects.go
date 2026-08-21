@@ -250,7 +250,12 @@ func (s *StatsCollector) Collect(ctx context.Context, serverID string,
 	for _, p := range projects {
 		switch p.Kind {
 		case KindDocker:
-			if st, ok := byName[p.ID]; ok {
+			// Состояние главнее цифр. `docker ps -a` и `docker stats` это две
+			// команды с разницей в полторы секунды: контейнер, поднятый между
+			// ними, приносит «Exited» из первой и живые проценты из второй.
+			// Приписав их друг другу, панель покажет мёртвый контейнер,
+			// который жрёт процессор.
+			if st, ok := byName[p.ID]; ok && p.State.HasProcess() {
 				p.CPUPercent, p.MemBytes = st.CPUPercent, st.MemBytes
 				p.CPUKnown, p.MemKnown = true, true
 			}

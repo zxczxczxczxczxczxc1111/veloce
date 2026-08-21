@@ -137,16 +137,22 @@ func (s *LogsService) pump(ctx context.Context, rc io.ReadCloser,
 	rb *ring, key, serverID, projectID string) {
 
 	defer rc.Close()
-	// О конце потока сообщаем ОТДЕЛЬНО от уборки: уборка происходит и при
-	// закрытии экрана, а сообщать надо только про конец, который случился сам.
+
+	// natural=true значит, что поток кончился САМ: контейнер остановлен, юнит
+	// убит, соединение отвалилось. Проверять ctx внутри defer нельзя: уборка
+	// ниже сама отменяет контекст, а defer выполняются в обратном порядке, и
+	// сообщение о конце потока молча не отправлялось вовсе. Именно поэтому в
+	// интерфейсе не появлялось ни строчки про обрыв.
+	natural := false
 	defer func() {
-		if ctx.Err() != nil {
-			return // поток закрыли мы сами, уходя с экрана
+		if !natural {
+			return
 		}
 		s.app.Event.Emit("logs:stream", LogStreamEvent{
 			ServerID: serverID, ProjectID: projectID, State: "ended",
 		})
 	}()
+
 	// Убираем за собой и при штатном конце потока (контейнер остановили), а не
 	// только по Stop с фронта. Иначе отменялка и кольцо на 5000 строк остаются
 	// в картах навсегда, и память растёт на каждый просмотренный проект.
@@ -197,6 +203,8 @@ func (s *LogsService) pump(ctx context.Context, rc io.ReadCloser,
 			return
 		case line, ok := <-pending:
 			if !ok {
+				// Поток кончился сам, а не по нашей команде.
+				natural = true
 				flush()
 				return
 			}
