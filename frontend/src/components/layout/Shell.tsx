@@ -9,6 +9,8 @@ import { Project } from "../../screens/Project";
 import { Logs } from "../../screens/Logs";
 import type { ProjectDTO } from "../../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 import { useConnState, useServerTickers } from "../../state/conn";
+import { useMetrics } from "../../state/metrics";
+import { useIncidentRecorder } from "../../state/projects";
 
 // Переключение экранов это состояние, а не роутер. Экранов четыре, ссылками
 // они не адресуются, а история браузера в десктопном окне только мешает:
@@ -55,6 +57,10 @@ export function Shell() {
   // и просит. Уход с сервера гасит такты сам, через размонтирование эффекта.
   const activeState = useConnState(activeId);
   useServerTickers(activeId, activeState);
+  // История метрик и память о падениях живут здесь, а не в экранах: оболочка
+  // смонтирована всегда, а экраны приходят и уходят вместе с окном истории.
+  const history = useMetrics(activeId);
+  useIncidentRecorder(activeId);
 
   const openServer = useCallback((id: string) => {
     setScreen({ name: "overview", serverId: id });
@@ -69,8 +75,9 @@ export function Shell() {
         onAdd={() => setScreen({ name: "servers" })}
       />
 
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto p-6">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-6">
         <ContentState
+          className="flex min-h-0 flex-1 flex-col"
           pending={servers === null}
           fetching={fetching}
           skeleton={<div className="h-24 rounded-xl bg-fill-subtle" />}
@@ -96,6 +103,7 @@ export function Shell() {
               onOpenProject={(p) =>
                 setScreen({ name: "project", serverId: screen.serverId, project: p })
               }
+              history={history}
             />
           )}
 

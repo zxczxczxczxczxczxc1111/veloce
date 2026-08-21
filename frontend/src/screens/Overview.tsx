@@ -1,5 +1,5 @@
 import { Events } from "@wailsio/runtime";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ProjectsService } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 import type { ProjectDTO } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 import type { ProjectsTick } from "../state/events";
@@ -12,7 +12,9 @@ import { ContentState } from "../components/ui/ContentState";
 import { useFormat } from "../format";
 import { useT } from "../i18n";
 import type { ConnState } from "../state/conn";
-import { percent, useMetrics } from "../state/metrics";
+import { percent } from "../state/metrics";
+import type { MetricsHistory } from "../state/metrics";
+import { lastDownAt } from "../state/projects";
 
 type Props = {
   serverId: string;
@@ -22,6 +24,10 @@ type Props = {
   onFixConnection: () => void;
   /** Открыть экран проекта. */
   onOpenProject: (p: ProjectDTO) => void;
+  // История метрик приходит СНАРУЖИ: живи она здесь, каждый уход на экран
+  // проекта выбрасывал бы пятиминутное окно спарклайна, и человек возвращался
+  // бы к пустым плиткам и подписи «тактов ещё не было».
+  history: MetricsHistory;
 };
 
 export function Overview({
@@ -30,10 +36,10 @@ export function Overview({
   onConnect,
   onFixConnection,
   onOpenProject,
+  history,
 }: Props) {
   const t = useT();
   const f = useFormat();
-  const history = useMetrics(serverId);
   const last = history.last;
   const missing = last?.missing ?? [];
 
@@ -67,17 +73,6 @@ export function Overview({
       off();
     };
   }, [serverId]);
-
-  // Память о падениях: снимок такта её не содержит, а человек, отошедший на
-  // пять минут, обязан узнать, что проект успел упасть и подняться.
-  const downSince = useRef(new Map<string, number>());
-  useEffect(() => {
-    const now = Date.now();
-    for (const p of projects ?? []) {
-      const key = p.kind + ":" + p.id;
-      if (p.state === "down") downSince.current.set(key, now);
-    }
-  }, [projects]);
 
   const shown = useMemo(() => {
     const list = (projects ?? []).filter((p) => showHidden || !p.hidden);
@@ -137,7 +132,7 @@ export function Overview({
   const disk = last?.disks?.[0];
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-4">
       <div className="flex items-baseline gap-3">
         <span className="text-[10px] uppercase tracking-[0.08em] text-fg-muted">
           {t.overview.uptime}
@@ -237,6 +232,7 @@ export function Overview({
       </div>
 
       <Card
+        className="flex min-h-0 flex-1 flex-col [&>div]:min-h-0 [&>div]:flex-1 [&>div]:overflow-y-auto [&>div]:p-0"
         title={t.projects.title}
         actions={
           <>
@@ -257,7 +253,6 @@ export function Overview({
             </Button>
           </>
         }
-        className="[&>div]:p-0"
       >
         <ContentState
           pending={projects === null}
@@ -274,7 +269,7 @@ export function Overview({
                   key={p.kind + ":" + p.id}
                   serverId={serverId}
                   project={p}
-                  downAt={downSince.current.get(p.kind + ":" + p.id) ?? 0}
+                  downAt={lastDownAt(serverId, p.kind, p.id)}
                   onChanged={() => void reload()}
                   onOpen={onOpenProject}
                 />

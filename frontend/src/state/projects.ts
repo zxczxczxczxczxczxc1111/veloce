@@ -26,3 +26,35 @@ export function useProjectTick(serverId: string, initial: ProjectDTO): ProjectDT
 
   return current;
 }
+
+// Память о падениях. Живёт ВНЕ экранов намеренно: во время падения человек
+// обычно смотрит на экран проекта, а обзор в этот момент размонтирован и
+// ничего не видит. Экранная память тут бесполезна по определению.
+const downAt = new Map<string, number>();
+
+function incidentKey(serverId: string, kind: string, id: string): string {
+  return serverId + "\x00" + kind + ":" + id;
+}
+
+// useIncidentRecorder слушает такты постоянно, независимо от открытого экрана.
+// Вешается один раз в оболочке.
+export function useIncidentRecorder(serverId: string | null): void {
+  useEffect(() => {
+    if (serverId === null) return;
+    const off = Events.On("projects:tick", (e: { data: ProjectsTick }) => {
+      if (e.data.serverId !== serverId) return;
+      const now = Date.now();
+      for (const p of e.data.projects ?? []) {
+        if (p.state === "down") downAt.set(incidentKey(serverId, p.kind, p.id), now);
+      }
+    });
+    return () => {
+      off();
+    };
+  }, [serverId]);
+}
+
+// lastDownAt отдаёт время последнего падения. 0 - падений не видели.
+export function lastDownAt(serverId: string, kind: string, id: string): number {
+  return downAt.get(incidentKey(serverId, kind, id)) ?? 0;
+}

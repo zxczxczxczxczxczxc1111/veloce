@@ -35,7 +35,10 @@ export function Servers({ servers, onChanged, onOpen }: Props) {
   );
 
   return (
-    <div className="flex flex-col gap-4">
+    // Рабочая область больше не прокручивается, поэтому длинный список держит
+    // прокрутку сам. Отступ снизу нужен, чтобы последняя карточка не липла к
+    // краю окна.
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-2">
       {editing === null ? (
         <div className="flex justify-end">
           <Button variant="accent" onClick={() => setEditing("new")}>

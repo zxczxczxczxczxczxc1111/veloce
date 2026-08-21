@@ -4,6 +4,8 @@ type Props = {
   pending: boolean; // данных не было никогда
   fetching: boolean; // данные есть, идёт обновление
   skeleton: ReactNode;
+  /** Классы обёртки: нужны там, где содержимое обязано занять остаток высоты. */
+  className?: string;
   children: ReactNode;
 };
 
@@ -14,15 +16,23 @@ type Props = {
 // Почему приглушение, а не скелет везде: скелет честен ровно один раз, когда
 // показывать нечего. Дальше данные на экране уже есть, и подменять их серыми
 // плашками значит выбрасывать информацию.
-export function ContentState({ pending, fetching, skeleton, children }: Props) {
+export function ContentState({
+  pending,
+  fetching,
+  skeleton,
+  className = "",
+  children,
+}: Props) {
   if (pending) {
-    return <div className="animate-pulse">{skeleton}</div>;
+    return <div className={"animate-pulse " + className}>{skeleton}</div>;
   }
   // Спека раздела 9.1: 220 мс и подъём на 10px. Одной прозрачности мало,
   // движение это половина паттерна: без подъёма содержимое просто мигает.
   return (
     <div
-      className="motion-safe:animate-[content-in_220ms_cubic-bezier(0.22,1,0.36,1)]"
+      className={
+        "motion-safe:animate-[content-in_220ms_cubic-bezier(0.22,1,0.36,1)] " + className
+      }
       style={{
         opacity: fetching ? 0.4 : 1,
         transition: "opacity 220ms cubic-bezier(0.22, 1, 0.36, 1)",
