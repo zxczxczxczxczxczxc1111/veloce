@@ -224,8 +224,11 @@ func (s *LogsService) pump(ctx context.Context, rc io.ReadCloser,
 			return
 		case line, ok := <-pending:
 			if !ok {
-				// Поток кончился сам, а не по нашей команде.
-				natural = true
+				// Канал закрылся. Это «сам» ТОЛЬКО если контекст ещё жив: при
+				// нашем собственном Stop готовы оба случая select сразу, а Go
+				// выбирает из готовых случайно, и каждый второй перезапуск
+				// отмечался в интерфейсе как обрыв со стороны сервера.
+				natural = ctx.Err() == nil
 				flush()
 				return
 			}

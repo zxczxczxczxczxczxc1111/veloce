@@ -1,5 +1,5 @@
 import { Events } from "@wailsio/runtime";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectsService } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 import type { ProjectDTO } from "../../bindings/github.com/zxczxczxczxczxczxc1111/veloce/internal/service";
 import type { ProjectsTick } from "../state/events";
@@ -68,11 +68,32 @@ export function Overview({
     };
   }, [serverId]);
 
-  const shown = useMemo(
-    () => (projects ?? []).filter((p) => showHidden || !p.hidden),
-    [projects, showHidden],
-  );
+  // Память о падениях: снимок такта её не содержит, а человек, отошедший на
+  // пять минут, обязан узнать, что проект успел упасть и подняться.
+  const downSince = useRef(new Map<string, number>());
+  useEffect(() => {
+    const now = Date.now();
+    for (const p of projects ?? []) {
+      const key = p.kind + ":" + p.id;
+      if (p.state === "down") downSince.current.set(key, now);
+    }
+  }, [projects]);
+
+  const shown = useMemo(() => {
+    const list = (projects ?? []).filter((p) => showHidden || !p.hidden);
+    // Проблемные наверх. На двух сотнях проектов это единственный способ
+    // увидеть беду, не листая: сортировка устойчивая, поэтому внутри группы
+    // порядок остаётся прежним и строки не прыгают на каждом такте.
+    return list
+      .map((p, i) => ({ p, i }))
+      .sort((a, b) => rank(a.p.state) - rank(b.p.state) || a.i - b.i)
+      .map((x) => x.p);
+  }, [projects, showHidden]);
+
   const hiddenCount = (projects ?? []).filter((p) => p.hidden).length;
+  const downCount = (projects ?? []).filter(
+    (p) => !p.hidden && p.state === "down",
+  ).length;
 
   // Ключ не принят это ОТДЕЛЬНЫЙ случай, а не «нет связи»: переподключение
   // бессмысленно, ключ не станет верным от повторной попытки, и кнопка
@@ -219,6 +240,13 @@ export function Overview({
         title={t.projects.title}
         actions={
           <>
+            {/* Счётчик виден, даже когда список прокручен: беда не должна
+                зависеть от того, докрутил ли человек до нужной строки. */}
+            {downCount > 0 && (
+              <span className="num text-xs text-down">
+                {t.fmt(t.projects.downCount, { n: String(downCount) })}
+              </span>
+            )}
             {hiddenCount > 0 && (
               <span className="num text-xs text-fg-muted">
                 {t.fmt(t.projects.hiddenCount, { n: String(hiddenCount) })}
@@ -246,6 +274,7 @@ export function Overview({
                   key={p.kind + ":" + p.id}
                   serverId={serverId}
                   project={p}
+                  downAt={downSince.current.get(p.kind + ":" + p.id) ?? 0}
                   onChanged={() => void reload()}
                   onOpen={onOpenProject}
                 />
@@ -256,4 +285,11 @@ export function Overview({
       </Card>
     </div>
   );
+}
+
+// rank задаёт порядок групп: сперва то, что требует внимания.
+function rank(state: string): number {
+  if (state === "down") return 0;
+  if (state === "starting") return 1;
+  return 2;
 }

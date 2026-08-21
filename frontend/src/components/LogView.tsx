@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useFormat } from "../format";
 import { useT } from "../i18n";
 import { memo } from "react";
 import { useLogs, type LogLine } from "../state/logs";
@@ -55,9 +56,21 @@ export function LogPanel({
   className = "",
 }: PanelProps) {
   const t = useT();
+  const f = useFormat();
   const [filter, setFilter] = useState("");
   const [atBottom, setAtBottom] = useState(true);
+  // Сколько строк пришло, пока человек читал выше. Кнопка «вниз» без числа
+  // не говорит, много ли он пропустил.
+  const [unseen, setUnseen] = useState(0);
   const boxRef = useRef<HTMLDivElement>(null);
+  const seenCount = useRef(0);
+  // Признак «держимся за низ» живёт в ref, а не только в состоянии: прокрутка
+  // назначается в следующем кадре, и к этому моменту человек уже мог уехать
+  // вверх. Состояние там ещё старое, и автопрокрутка утащила бы его обратно.
+  const stick = useRef(true);
+  // Длина списка для слушателя прокрутки: он создаётся один раз и текущего
+  // значения из замыкания не видит.
+  const lenRef = useRef(0);
 
   // Фильтр применяется к буферу здесь, а не на сервере: перезапускать
   // `docker logs -f` на каждый набранный символ нельзя.
@@ -69,27 +82,56 @@ export function LogPanel({
     return lines.filter((l) => l.system === true || l.text.toLowerCase().includes(q));
   }, [lines, filter]);
 
+  lenRef.current = shown.length;
+
   // Автопрокрутка отключается, как только человек ушёл вверх, и включается
   // обратно, когда он сам вернулся вниз. Без этого прочитать что-либо в живом
   // логе физически невозможно: строка уезжает из-под курсора.
   useEffect(() => {
     const box = boxRef.current;
-    if (box === null || !atBottom) return;
-    box.scrollTop = box.scrollHeight;
+    if (box === null) return;
+    if (!stick.current) {
+      setUnseen(shown.length - seenCount.current);
+      return;
+    }
+    setUnseen(0);
+    // Прокрутка в СЛЕДУЮЩЕМ кадре: служебные строки и переносы длинных строк
+    // меняют высоту уже после того, как React обновил разметку, и прокрутка
+    // «сейчас» промахивается мимо конца.
+    const id = requestAnimationFrame(() => {
+      // Ещё одна проверка: между планированием кадра и его выполнением
+      // человек мог схватиться за колесо.
+      if (!stick.current) return;
+      box.scrollTop = box.scrollHeight;
+      seenCount.current = shown.length;
+    });
+    return () => cancelAnimationFrame(id);
   }, [shown, atBottom]);
 
-  function onScroll() {
+  // Слушатель вешается на сам элемент, а НЕ через onScroll React: событие
+  // прокрутки не всплывает, и в webview обработчик React до него не доходит -
+  // проверено, автопрокрутка утаскивала экран вниз, сколько ни крути колесо.
+  useEffect(() => {
     const box = boxRef.current;
     if (box === null) return;
-    const distance = box.scrollHeight - box.scrollTop - box.clientHeight;
-    setAtBottom(distance <= BOTTOM_SLACK);
-  }
+    const onScroll = () => {
+      const distance = box.scrollHeight - box.scrollTop - box.clientHeight;
+      stick.current = distance <= BOTTOM_SLACK;
+      if (stick.current) seenCount.current = lenRef.current;
+      setAtBottom(stick.current);
+    };
+    box.addEventListener("scroll", onScroll, { passive: true });
+    return () => box.removeEventListener("scroll", onScroll);
+  }, []);
 
   function toBottom() {
     const box = boxRef.current;
     if (box === null) return;
     box.scrollTop = box.scrollHeight;
+    stick.current = true;
+    seenCount.current = shown.length;
     setAtBottom(true);
+    setUnseen(0);
   }
 
   return (
@@ -122,7 +164,6 @@ export function LogPanel({
 
       <div
         ref={boxRef}
-        onScroll={onScroll}
         className="num min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-all px-5 py-3 font-mono text-xs leading-relaxed"
       >
         {error !== null && <p className="text-down">{error}</p>}
@@ -137,11 +178,12 @@ export function LogPanel({
       </div>
 
       {/* Кнопка возврата появляется только когда автопрокрутка отключена:
-          висеть постоянно ей незачем. */}
+          висеть постоянно ей незачем. Число пропущенных строк обязательно:
+          без него непонятно, вернуться сейчас или дочитать. */}
       {!atBottom && (
         <div className="border-t border-border px-5 py-2">
           <Button dense variant="accent" onClick={toBottom}>
-            {t.logs.toBottom}
+            {unseen > 0 ? f.plural(unseen, t.logs.newLines) : t.logs.toBottom}
           </Button>
         </div>
       )}

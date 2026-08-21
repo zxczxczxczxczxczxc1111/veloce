@@ -52,6 +52,22 @@ function fill(tpl: string, n: number): string {
   return tpl.replace("{n}", String(n));
 }
 
+// plural выбирает форму по числу. Правило русское: 1 - одна форма, 2-4 -
+// вторая, всё остальное третья, с исключением на 11-14. У английского обе
+// последние формы совпадают, и правило вырождается само.
+type Forms = { one: string; few: string; many: string };
+
+function plural(n: number, f: Forms): string {
+  const tens = Math.abs(n) % 100;
+  const ones = n % 10;
+  let form = f.many;
+  if (tens < 11 || tens > 14) {
+    if (ones === 1) form = f.one;
+    else if (ones >= 2 && ones <= 4) form = f.few;
+  }
+  return form.replace("{n}", String(n));
+}
+
 export function percentText(v: number): string {
   return v.toFixed(1) + "%";
 }
@@ -70,5 +86,6 @@ export function useFormat() {
     // now передаётся снаружи, чтобы значение можно было пересчитать по такту,
     // а не только при перерисовке по другой причине.
     ago: (ms: number, now: number = Date.now()) => ago(agoDict, ms, now),
+    plural: (n: number, forms: Forms) => plural(n, forms),
   };
 }

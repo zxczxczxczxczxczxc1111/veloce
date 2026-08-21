@@ -8,18 +8,28 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { Button } from "./ui/Button";
 import { Field } from "./ui/Field";
 
+// Сколько держать след падения. Пять минут это про «отошёл за кофе»:
+// дольше метка превращается в шум, короче - бесполезна.
+const TRACE_MS = 5 * 60_000;
+
 type Props = {
   serverId: string;
   project: ProjectDTO;
+  /** Когда проект последний раз видели лежащим, мс. 0 - не видели. */
+  downAt: number;
   /** Перечитать список после сохранения настройки. */
   onChanged: () => void;
   /** Открыть экран проекта. */
   onOpen: (p: ProjectDTO) => void;
 };
 
-export function ProjectRow({ serverId, project, onChanged, onOpen }: Props) {
+export function ProjectRow({ serverId, project, downAt, onChanged, onOpen }: Props) {
   const t = useT();
   const f = useFormat();
+  // След показываем только у поднявшегося: у лежащего и так написано «Лежит»,
+  // и вторая метка про то же самое была бы шумом.
+  const trace =
+    project.state !== "down" && downAt > 0 && Date.now() - downAt < TRACE_MS;
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const restart = useRestart(serverId, project);
@@ -38,6 +48,11 @@ export function ProjectRow({ serverId, project, onChanged, onOpen }: Props) {
           </span>
           <span className="block truncate text-xs text-fg-muted">
             {project.kind} · {detail(t, project)}
+            {trace && (
+              <span className="ml-2 text-accent">
+                {t.fmt(t.projects.recentlyDown, { ago: f.ago(downAt) })}
+              </span>
+            )}
           </span>
         </button>
 
